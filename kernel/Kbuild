@@ -35,6 +35,12 @@ kernelsu-objs += supercall/dispatch.o
 kernelsu-objs += supercall/perm.o
 kernelsu-objs += supercall/supercall.o
 
+ifeq ($(CONFIG_KPM),y)
+kernelsu-objs += kpm/compact.o
+kernelsu-objs += kpm/kpm.o
+kernelsu-objs += kpm/super_access.o
+endif
+
 ifdef KBUILD_EXTMOD
 ifeq ($(CONFIG_KSU_DISABLE_MANAGER),y)
 ccflags-y += -DCONFIG_KSU_DISABLE_MANAGER=1
@@ -48,7 +54,21 @@ endif
 endif
 
 ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
-ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
+ccflags-y += -I$(objtree)/security/selinux -I$(objtree)/security/selinux/include
+ccflags-y += -include $(srctree)/include/uapi/asm-generic/errno.h
+
+KSU_SELINUX_GEN := $(objtree)/security/selinux
+
+$(shell mkdir -p $(KSU_SELINUX_GEN))
+
+quiet_cmd_ksu_flask = GEN     $(KSU_SELINUX_GEN)/flask.h $(KSU_SELINUX_GEN)/av_permissions.h
+      cmd_ksu_flask = $< $(KSU_SELINUX_GEN)/flask.h $(KSU_SELINUX_GEN)/av_permissions.h
+
+targets += $(KSU_SELINUX_GEN)/flask.h $(KSU_SELINUX_GEN)/av_permissions.h
+$(KSU_SELINUX_GEN)/flask.h: scripts/selinux/genheaders/genheaders FORCE
+	$(call if_changed,ksu_flask)
+
+$(addprefix $(obj)/,$(kernelsu-objs)): $(KSU_SELINUX_GEN)/flask.h
 
 ifeq ($(filter /%,$(src)),)
 KSU_KERNEL_DIR := $(srctree)/$(src)

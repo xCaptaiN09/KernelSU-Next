@@ -40,6 +40,13 @@ config KSU_ALLOWLIST_WORKAROUND
 	help
 	  Enable workaround for broken allowlist save
 
+config KPM
+	bool "Enable SukiSU KPM"
+	depends on KSU && 64BIT
+	default n
+	help
+	  Enable KernelPatch Module support for KernelSU Next.
+
 # For easier extern ifdef handling
 config KSU_MANUAL_HOOK
 	bool "KernelSU manual hook mode."
@@ -68,6 +75,13 @@ config KSU_SUSFS
     help
         Patch and Enable SUSFS to kernel with KernelSU.
 
+config KSU_SUSFS_HAS_MAGIC_MOUNT
+    bool "KernelSU has magic mount support"
+    depends on KSU_SUSFS
+    default y
+    help
+        - Enables SUSFS auto-hide handling for KernelSU magic mounts.
+
 config KSU_SUSFS_SUS_PATH
     bool "Enable to hide suspicious path (NOT recommended)"
     depends on KSU_SUSFS
@@ -88,6 +102,20 @@ config KSU_SUSFS_SUS_MOUNT
         - Effective on all processes for hiding mount entries.
         - mnt_id and mnt_group_id of the sus mount will be assigned to a much bigger number to solve the ssue of id not being contiguous.
 
+config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+    bool "Enable to hide KSU default mounts automatically"
+    depends on KSU_SUSFS_SUS_MOUNT
+    default y
+    help
+        - Automatically add KSU default mounts to sus_mount.
+
+config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+    bool "Enable to hide suspicious bind mounts automatically"
+    depends on KSU_SUSFS_SUS_MOUNT
+    default y
+    help
+        - Automatically add bind mounts from KSU domain to sus_mount.
+
 config KSU_SUSFS_SUS_KSTAT
     bool "Enable to spoof suspicious kstat"
     depends on KSU_SUSFS
@@ -96,6 +124,13 @@ config KSU_SUSFS_SUS_KSTAT
         - Allow spoofing the kstat of user-defined file/directory.
         - Effective only on zygote spawned user app process.
 
+config KSU_SUSFS_SUS_OVERLAYFS
+    bool "Enable to spoof overlayfs kstat/kstatfs automatically"
+    depends on KSU_SUSFS
+    default n
+    help
+        - Automatically spoof kstat and kstatfs for overlayed files/directories.
+
 config KSU_SUSFS_TRY_UMOUNT
 	bool "Enable to use ksu's try_umount"
 	depends on KSU_SUSFS
@@ -103,6 +138,13 @@ config KSU_SUSFS_TRY_UMOUNT
 	help
 		- Allow using try_umount to umount other user-defined mount paths prior to ksu's default umount paths.
 		- Effective only on zygote spawned umounted user app process.
+
+config KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+    bool "Enable to add bind mounts to try_umount automatically"
+    depends on KSU_SUSFS_TRY_UMOUNT
+    default y
+    help
+        - Automatically add bind mounts to the SUSFS try_umount list.
 
 config KSU_SUSFS_SPOOF_UNAME
     bool "Enable to spoof uname"
@@ -143,6 +185,14 @@ config KSU_SUSFS_OPEN_REDIRECT
         - Allow redirecting a target path to be opened with another user-defined path.
         - Effective only on processes with uid < 2000.
         - Please be reminded that process with open access to the target and redirected path can be detected.
+
+config KSU_SUSFS_SUS_SU
+    bool "Enable SUS-SU in runtime temporarily"
+    depends on KSU_SUSFS && KPROBES && HAVE_KPROBES && KPROBE_EVENTS && KSU_KPROBES_HOOK
+    default y
+    help
+        - Allow user to temporarily switch SUS-SU mode at runtime.
+        - Only apps with root access granted by KernelSU manager are allowed to use it.
 
 config KSU_SUSFS_SUS_MAP
     bool "Enable to hide some mmapped real file from different proc maps interfaces"

@@ -1,5 +1,6 @@
 #include <linux/anon_inodes.h>
 #include <linux/err.h>
+#include <linux/errno.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>
 #include <linux/fs.h>
@@ -25,30 +26,11 @@
 
 #include "tiny_sulog.h"
 
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-
-#ifndef __weak
-#define __weak __attribute__((weak))
+#ifdef CONFIG_KPM
+#include "kpm/kpm.h"
 #endif
 
-__weak void ksu_handle_umount(uid_t old_uid, uid_t new_uid)
-{
-    (void)old_uid;
-    (void)new_uid;
-}
-
-void susfs_try_umount(uid_t new_uid)
-{
-    uid_t old_uid = current_uid().val;
-    ksu_handle_umount(old_uid, new_uid);
-}
-
-int susfs_add_try_umount(void __user *arg)
-{
-    return 0;
-}
-
-#endif
+#define CMD_ENABLE_KPM 100
 
 uint32_t ksuver_override = 0;
 
@@ -98,6 +80,152 @@ int ksu_install_fd(void)
 	return fd;
 }
 
+#ifdef CONFIG_KSU_SUSFS
+static void ksu_prctl_reply(unsigned long arg5, int error)
+{
+	if (arg5 && copy_to_user((void __user *)arg5, &error, sizeof(error)))
+		pr_err("prctl reply error: %d\n", error);
+}
+
+static int ksu_handle_susfs_prctl(unsigned long cmd, unsigned long arg3,
+				  unsigned long arg5)
+{
+	int error = -EOPNOTSUPP;
+
+	switch (cmd) {
+	case CMD_SUSFS_SHOW_VERSION:
+		error = copy_to_user((void __user *)arg3, SUSFS_VERSION,
+				     strlen(SUSFS_VERSION) + 1) ?
+				-EFAULT : 0;
+		break;
+	case CMD_SUSFS_SHOW_ENABLED_FEATURES: {
+		u64 enabled_features = 0;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		enabled_features |= (1ULL << 0);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+		enabled_features |= (1ULL << 1);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+		enabled_features |= (1ULL << 2);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+		enabled_features |= (1ULL << 3);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		enabled_features |= (1ULL << 4);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_OVERLAYFS
+		enabled_features |= (1ULL << 5);
+#endif
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+		enabled_features |= (1ULL << 6);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+		enabled_features |= (1ULL << 7);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+		enabled_features |= (1ULL << 8);
+#endif
+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+		enabled_features |= (1ULL << 9);
+#endif
+#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+		enabled_features |= (1ULL << 10);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+		enabled_features |= (1ULL << 11);
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		enabled_features |= (1ULL << 12);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+		enabled_features |= (1ULL << 13);
+#endif
+#ifdef CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT
+		enabled_features |= (1ULL << 14);
+#endif
+		error = copy_to_user((void __user *)arg3, &enabled_features,
+				     sizeof(enabled_features)) ?
+				-EFAULT : 0;
+		break;
+	}
+	case CMD_SUSFS_SHOW_VARIANT:
+		error = copy_to_user((void __user *)arg3, SUSFS_VARIANT,
+				     strlen(SUSFS_VARIANT) + 1) ?
+				-EFAULT : 0;
+		break;
+	case CMD_SUSFS_SHOW_SUS_SU_WORKING_MODE:
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+	{
+		int mode = susfs_get_sus_su_working_mode();
+		error = copy_to_user((void __user *)arg3, &mode, sizeof(mode)) ?
+				-EFAULT : 0;
+		break;
+	}
+#else
+		error = -EOPNOTSUPP;
+		break;
+#endif
+	case CMD_SUSFS_IS_SUS_SU_READY:
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+	{
+		bool ready = true;
+		error = copy_to_user((void __user *)arg3, &ready,
+				     sizeof(ready)) ?
+				-EFAULT : 0;
+		break;
+	}
+#else
+		error = -EOPNOTSUPP;
+		break;
+#endif
+	case CMD_SUSFS_RUN_UMOUNT_FOR_CURRENT_MNT_NS:
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+		susfs_try_umount(current_uid().val);
+		error = 0;
+#endif
+		break;
+	default:
+		error = susfs_handle_ioctl((unsigned int)cmd, arg3) ?
+				0 : -EOPNOTSUPP;
+		break;
+	}
+
+	ksu_prctl_reply(arg5, error);
+	return 0;
+}
+#endif
+
+int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
+		     unsigned long arg4, unsigned long arg5)
+{
+	if (option != KSU_INSTALL_MAGIC1)
+		return -ENOSYS;
+
+	if (current_uid().val != 0 && !is_manager())
+		return -EPERM;
+
+#ifdef CONFIG_KPM
+	if (arg2 == CMD_ENABLE_KPM) {
+		bool enabled = IS_ENABLED(CONFIG_KPM);
+		if (copy_to_user((void __user *)arg3, &enabled, sizeof(enabled)))
+			return -EFAULT;
+		return 0;
+	}
+
+	if (sukisu_is_kpm_control_code(arg2))
+		return sukisu_handle_kpm(arg2, arg3, arg4, arg5);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS
+	if (arg2 >= CMD_SUSFS_ADD_SUS_PATH && arg2 <= CMD_SUSFS_SUS_SU)
+		return ksu_handle_susfs_prctl(arg2, arg3, arg5);
+#endif
+
+	return -ENOSYS;
+}
+
 int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 			  void __user **arg)
 {
@@ -108,95 +236,6 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 	pr_info("sys_reboot: intercepted call! magic: 0x%x id: %d\n", magic1,
 		magic2);
 #endif
-
-#ifdef CONFIG_KSU_SUSFS
-    // If magic2 is susfs and current process is root
-    if (magic2 == SUSFS_MAGIC && current_uid().val == 0) {
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-        if (cmd == CMD_SUSFS_ADD_SUS_PATH) {
-            susfs_add_sus_path(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_ADD_SUS_PATH_LOOP) {
-            susfs_add_sus_path_loop(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-        if (cmd == CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS) {
-            susfs_set_hide_sus_mnts_for_non_su_procs(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-        if (cmd == CMD_SUSFS_ADD_SUS_KSTAT) {
-            susfs_add_sus_kstat(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_UPDATE_SUS_KSTAT) {
-            susfs_update_sus_kstat(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY) {
-            susfs_add_sus_kstat(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-        if (cmd == CMD_SUSFS_ADD_TRY_UMOUNT) {
-            susfs_add_try_umount(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-        if (cmd == CMD_SUSFS_SET_UNAME) {
-            susfs_set_uname(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
-        if (cmd == CMD_SUSFS_ENABLE_LOG) {
-            susfs_enable_log(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
-#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-        if (cmd == CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG) {
-            susfs_set_cmdline_or_bootconfig(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-        if (cmd == CMD_SUSFS_ADD_OPEN_REDIRECT) {
-            susfs_add_open_redirect(arg);
-            return 0;
-        }
-#endif //#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-        if (cmd == CMD_SUSFS_ADD_SUS_MAP) {
-            susfs_add_sus_map(arg);
-            return 0;
-        }
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-        if (cmd == CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING) {
-            susfs_set_avc_log_spoofing(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_SHOW_ENABLED_FEATURES) {
-            susfs_get_enabled_features(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_SHOW_VARIANT) {
-            susfs_show_variant(arg);
-            return 0;
-        }
-        if (cmd == CMD_SUSFS_SHOW_VERSION) {
-            susfs_show_version(arg);
-            return 0;
-        }
-        return 0;
-    }
-#endif // #ifdef CONFIG_KSU_SUSFS
 
 	// Check if this is a request to install KSU fd
 	if (magic2 == KSU_INSTALL_MAGIC2) {
