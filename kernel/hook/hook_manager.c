@@ -1,5 +1,6 @@
 #ifdef KSU_KPROBES_HOOK
 #include "linux/printk.h"
+#include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/kprobes.h>
 #include <linux/tracepoint.h>
@@ -23,6 +24,70 @@
 // >  1: someone else is also using syscall tracepoint e.g. ftrace
 static int tracepoint_reg_count = 0;
 static DEFINE_SPINLOCK(tracepoint_reg_lock);
+static DEFINE_MUTEX(ksu_trace_hook_lock);
+static bool ksu_sys_enter_hook_enabled;
+bool ksu_devpts_hook __read_mostly = true;
+
+static void ksu_mark_running_process_locked(void);
+void ksu_unmark_all_process(void);
+#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id);
+#endif
+
+static int ksu_register_sys_enter_hook(void)
+{
+	int ret = 0;
+
+#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+	if (ksu_sys_enter_hook_enabled)
+		return 0;
+
+	ret = register_trace_sys_enter(ksu_sys_enter_handler, NULL);
+#ifndef CONFIG_KRETPROBES
+	ksu_mark_running_process_locked();
+#endif
+	if (ret) {
+		pr_err("hook_manager: failed to register sys_enter tracepoint: %d\n", ret);
+		return ret;
+	}
+
+	ksu_sys_enter_hook_enabled = true;
+	pr_info("hook_manager: sys_enter tracepoint registered\n");
+#endif
+	return ret;
+}
+
+static void ksu_unregister_sys_enter_hook(void)
+{
+#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+	if (!ksu_sys_enter_hook_enabled)
+		return;
+
+	unregister_trace_sys_enter(ksu_sys_enter_handler, NULL);
+	tracepoint_synchronize_unregister();
+	ksu_unmark_all_process();
+	ksu_sys_enter_hook_enabled = false;
+	pr_info("hook_manager: sys_enter tracepoint unregistered\n");
+#endif
+}
+
+void ksu_susfs_enable_sus_su(void)
+{
+	mutex_lock(&ksu_trace_hook_lock);
+	ksu_devpts_hook = false;
+	ksu_su_compat_enabled = false;
+	ksu_unregister_sys_enter_hook();
+	mutex_unlock(&ksu_trace_hook_lock);
+}
+
+void ksu_susfs_disable_sus_su(void)
+{
+	mutex_lock(&ksu_trace_hook_lock);
+	ksu_devpts_hook = true;
+	ksu_su_compat_enabled = true;
+	ksu_register_sys_enter_hook();
+	mutex_unlock(&ksu_trace_hook_lock);
+}
 
 void ksu_clear_task_tracepoint_flag_if_needed(struct task_struct *t)
 {
@@ -360,7 +425,6 @@ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
 
 void __init ksu_syscall_hook_manager_init(void)
 {
-	int ret;
 	pr_info("hook_manager: ksu_hook_manager_init called\n");
 
 #ifdef CONFIG_KRETPROBES
@@ -370,17 +434,9 @@ void __init ksu_syscall_hook_manager_init(void)
 	syscall_unregfunc_rp = init_kretprobe("syscall_unregfunc", syscall_unregfunc_handler);
 #endif
 
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	ret = register_trace_sys_enter(ksu_sys_enter_handler, NULL);
-#ifndef CONFIG_KRETPROBES
-	ksu_mark_running_process_locked();
-#endif
-	if (ret) {
-		pr_err("hook_manager: failed to register sys_enter tracepoint: %d\n", ret);
-	} else {
-		pr_info("hook_manager: sys_enter tracepoint registered\n");
-	}
-#endif
+	mutex_lock(&ksu_trace_hook_lock);
+	ksu_register_sys_enter_hook();
+	mutex_unlock(&ksu_trace_hook_lock);
 
 	ksu_setuid_hook_init();
 	ksu_sucompat_init();
@@ -390,11 +446,9 @@ void __init ksu_syscall_hook_manager_init(void)
 void __exit ksu_syscall_hook_manager_exit(void)
 {
 	pr_info("hook_manager: ksu_hook_manager_exit called\n");
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	unregister_trace_sys_enter(ksu_sys_enter_handler, NULL);
-	tracepoint_synchronize_unregister();
-	pr_info("hook_manager: sys_enter tracepoint unregistered\n");
-#endif
+	mutex_lock(&ksu_trace_hook_lock);
+	ksu_unregister_sys_enter_hook();
+	mutex_unlock(&ksu_trace_hook_lock);
 
 #ifdef CONFIG_KRETPROBES
 	destroy_kretprobe(&syscall_regfunc_rp);
