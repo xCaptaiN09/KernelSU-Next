@@ -200,6 +200,14 @@ static int ksu_handle_susfs_prctl(unsigned long cmd, unsigned long arg3,
 int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		     unsigned long arg4, unsigned long arg5)
 {
+#ifdef CONFIG_KSU_SUSFS
+	if (option >= CMD_SUSFS_ADD_SUS_PATH && option <= CMD_SUSFS_SUS_SU) {
+		if (current_uid().val != 0 && !is_manager())
+			return -EPERM;
+		return ksu_handle_susfs_prctl(option, arg2, arg4);
+	}
+#endif
+
 	if (option != KSU_INSTALL_MAGIC1)
 		return -ENOSYS;
 
