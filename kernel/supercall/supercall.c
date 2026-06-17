@@ -165,6 +165,18 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 	// extensions 
 	u64 reply = (u64)*arg;
 
+#ifdef CONFIG_KSU_SUSFS
+	if (magic2 == SUSFS_MAGIC) {
+		if (current_uid().val != 0 && !is_manager())
+			return 0;
+
+		if (cmd >= CMD_SUSFS_ADD_SUS_PATH && cmd <= CMD_SUSFS_ADD_SUS_MAP)
+			susfs_handle_ioctl(cmd, (unsigned long)*arg);
+
+		return 0;
+	}
+#endif
+
 	if (magic2 == CHANGE_MANAGER_UID) {
 		// only root is allowed for this command
 		if (current_uid().val != 0)
