@@ -31,6 +31,9 @@
 #endif
 
 #define CMD_ENABLE_KPM 100
+#define SUSFS_ENABLED_FEATURES_SIZE 8192
+#define SUSFS_MAX_VERSION_BUFSIZE 16
+#define SUSFS_MAX_VARIANT_BUFSIZE 16
 
 uint32_t ksuver_override = 0;
 
@@ -81,6 +84,139 @@ int ksu_install_fd(void)
 }
 
 #ifdef CONFIG_KSU_SUSFS
+struct ksu_susfs_manager_version {
+	char version[SUSFS_MAX_VERSION_BUFSIZE];
+	int err;
+};
+
+struct ksu_susfs_manager_variant {
+	char variant[SUSFS_MAX_VARIANT_BUFSIZE];
+	int err;
+};
+
+struct ksu_susfs_manager_features {
+	char features[SUSFS_ENABLED_FEATURES_SIZE];
+	int err;
+};
+
+static int ksu_susfs_copy_feature(char *buf, size_t buf_size, size_t *copied,
+				  const char *feature)
+{
+	size_t len = strlen(feature);
+
+	if (*copied + len >= buf_size)
+		return -EINVAL;
+
+	memcpy(buf + *copied, feature, len);
+	*copied += len;
+	return 0;
+}
+
+static int ksu_handle_susfs_manager_reboot(unsigned int cmd,
+					   unsigned long arg)
+{
+	switch (cmd) {
+	case CMD_SUSFS_SHOW_VERSION: {
+		struct ksu_susfs_manager_version info = {0};
+
+		strncpy(info.version, SUSFS_VERSION, sizeof(info.version) - 1);
+		info.err = 0;
+		return copy_to_user((void __user *)arg, &info, sizeof(info)) ?
+				-EFAULT : 0;
+	}
+	case CMD_SUSFS_SHOW_VARIANT: {
+		struct ksu_susfs_manager_variant info = {0};
+
+		strncpy(info.variant, SUSFS_VARIANT, sizeof(info.variant) - 1);
+		info.err = 0;
+		return copy_to_user((void __user *)arg, &info, sizeof(info)) ?
+				-EFAULT : 0;
+	}
+	case CMD_SUSFS_SHOW_ENABLED_FEATURES: {
+		struct ksu_susfs_manager_features *info;
+		size_t copied = 0;
+		int err = 0;
+
+		info = kzalloc(sizeof(*info), GFP_KERNEL);
+		if (!info)
+			return -ENOMEM;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SUS_PATH\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SUS_MOUNT\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SUS_KSTAT\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_OVERLAYFS
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SUS_OVERLAYFS\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_TRY_UMOUNT\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SPOOF_UNAME\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_ENABLE_LOG\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_OPEN_REDIRECT\n");
+		if (err)
+			goto out_features;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+		err = ksu_susfs_copy_feature(info->features, sizeof(info->features),
+					     &copied, "CONFIG_KSU_SUSFS_SUS_SU\n");
+#endif
+out_features:
+		info->err = err;
+		err = copy_to_user((void __user *)arg, info, sizeof(*info)) ?
+				-EFAULT : 0;
+		kfree(info);
+		return err;
+	}
+	default:
+		return susfs_handle_ioctl(cmd, arg) ? 0 : -EOPNOTSUPP;
+	}
+}
+
 static void ksu_prctl_reply(unsigned long arg5, int error)
 {
 	if (arg5 && copy_to_user((void __user *)arg5, &error, sizeof(error)))
@@ -262,6 +398,16 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 
 	// extensions 
 	u64 reply = (u64)*arg;
+
+#ifdef CONFIG_KSU_SUSFS
+	if (magic2 == SUSFS_MAGIC) {
+		if (current_uid().val != 0 && !is_manager())
+			return 0;
+
+		ksu_handle_susfs_manager_reboot(cmd, (unsigned long)*arg);
+		return 0;
+	}
+#endif
 
 	if (magic2 == CHANGE_MANAGER_UID) {
 		// only root is allowed for this command
