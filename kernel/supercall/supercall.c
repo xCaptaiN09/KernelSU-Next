@@ -92,18 +92,7 @@ static int ksu_handle_susfs_prctl(unsigned long cmd, unsigned long arg3,
 {
 	int error = -EOPNOTSUPP;
 
-	switch (cmd) {
-	case CMD_SUSFS_RUN_UMOUNT_FOR_CURRENT_MNT_NS:
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-		susfs_try_umount(current_uid().val);
-		error = 0;
-#endif
-		break;
-	default:
-		error = susfs_handle_ioctl((unsigned int)cmd, arg3) ?
-				0 : -EOPNOTSUPP;
-		break;
-	}
+	error = susfs_handle_ioctl((unsigned int)cmd, arg3) ? 0 : -EOPNOTSUPP;
 
 	ksu_prctl_reply(arg5, error);
 	return 0;
