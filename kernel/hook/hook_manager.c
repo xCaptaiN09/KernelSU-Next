@@ -460,10 +460,26 @@ void __exit ksu_syscall_hook_manager_exit(void)
 	ksu_avc_spoof_exit();
 }
 #else
+#include <linux/cache.h>
+
 #include "klog.h" // IWYU pragma: keep
 #include "hook_manager.h"
 #include "feature/sucompat.h"
 #include "setuid_hook.h"
+
+bool ksu_devpts_hook __read_mostly = true;
+
+void ksu_susfs_enable_sus_su(void)
+{
+	ksu_devpts_hook = false;
+	ksu_su_compat_enabled = false;
+}
+
+void ksu_susfs_disable_sus_su(void)
+{
+	ksu_devpts_hook = true;
+	ksu_su_compat_enabled = true;
+}
 
 void __init ksu_syscall_hook_manager_init(void)
 {
