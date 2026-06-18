@@ -4,6 +4,7 @@
 #include <linux/module.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
+#include <linux/sysfs.h>
 #include <linux/workqueue.h>
 
 #include "policy/allowlist.h"
@@ -22,6 +23,8 @@
 #include <linux/susfs.h>
 #endif // #ifdef CONFIG_KSU_SUSFS
 #include "selinux/selinux.h"
+
+extern struct kset *module_kset;
 
 extern void __init ksu_lsm_hook_init(void);
 extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
@@ -194,9 +197,28 @@ module_init(kernelsu_init);
 #endif
 module_exit(kernelsu_exit);
 
+#ifndef MODULE
+static int __init kernelsu_hide_builtin_sysfs(void)
+{
+	struct kobject *kobj;
+
+	if (!module_kset)
+		return 0;
+
+	kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!kobj)
+		return 0;
+
+	sysfs_remove_dir(kobj);
+	kobject_put(kobj);
+	return 0;
+}
+late_initcall(kernelsu_hide_builtin_sysfs);
+#endif
+
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("weishu");
-MODULE_DESCRIPTION("Android KernelSU");
+MODULE_AUTHOR("Android");
+MODULE_DESCRIPTION("Vendor service support");
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
 MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)

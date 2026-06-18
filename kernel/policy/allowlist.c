@@ -189,6 +189,10 @@ static bool profile_valid(struct app_profile *profile)
 				pr_info("migrated profile domain: %s\n", profile->key);
 			}
 		}
+		if (strncmp(domain, "u:r:ksu:s0", domain_len) == 0) {
+			__strscpy_pad(domain, KSU_DEFAULT_SELINUX_DOMAIN, domain_len);
+			pr_info("migrated ksu profile domain: %s\n", profile->key);
+		}
 		size_t len = strnlen(domain, domain_len);
 
 		if (len == 0 || len >= domain_len) {

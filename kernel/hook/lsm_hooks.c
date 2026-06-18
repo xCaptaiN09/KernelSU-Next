@@ -141,7 +141,7 @@ static struct security_hook_list ksu_hooks[] = {
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 static const struct lsm_id ksu_lsmid = {
-	.name = "ksu",
+	.name = "vendor_hidl",
 	.id = 912,
 };
 #endif
@@ -151,7 +151,7 @@ void __init ksu_lsm_hook_init(void)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 	security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), &ksu_lsmid);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-	security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu");
+	security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "vendor_hidl");
 #else
 	// https://elixir.bootlin.com/linux/v4.10.17/source/include/linux/lsm_hooks.h#L1892
 	security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks));
