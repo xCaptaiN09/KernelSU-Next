@@ -105,7 +105,6 @@ void try_umount(const char *mnt, int flags)
 
 struct umount_tw {
 	struct callback_head cb;
-};
 
 #if !defined(CONFIG_KSU_SUSFS) || !defined(CONFIG_KSU_SUSFS_TRY_UMOUNT)
 static void umount_tw_func(struct callback_head *cb)
@@ -126,6 +125,7 @@ static void umount_tw_func(struct callback_head *cb)
 	kfree(tw);
 }
 
+#endif
 int vnd_handle_umount(uid_t old_uid, uid_t new_uid)
 {
 	struct umount_tw *tw;
