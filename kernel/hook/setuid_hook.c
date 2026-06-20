@@ -28,7 +28,7 @@
 #include "compat/kernel_compat.h"
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs.h>
-#include <linux/susfs_def.h>
+#include <linux/vndfs_def.h>
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 extern void disable_seccomp(struct task_struct *tsk);
@@ -46,50 +46,50 @@ static inline bool is_zygote_normal_app_uid(uid_t uid)
     return (uid >= 10000 && uid < 19999);
 }
 
-extern u32 susfs_zygote_sid;
+extern u32 vndfs_zygote_sid;
 extern struct cred *ksu_cred;
 
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-extern void susfs_run_sus_path_loop(void);
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+extern void vndfs_run_sus_path_loop(void);
+#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
 
-struct susfs_handle_setuid_tw {
+struct vndfs_handle_setuid_tw {
     struct callback_head cb;
 };
 
-static void susfs_handle_setuid_tw_func(struct callback_head *cb)
+static void vndfs_handle_setuid_tw_func(struct callback_head *cb)
 {
-    struct susfs_handle_setuid_tw *tw = container_of(cb, struct susfs_handle_setuid_tw, cb);
+    struct vndfs_handle_setuid_tw *tw = container_of(cb, struct vndfs_handle_setuid_tw, cb);
     const struct cred *saved = override_creds(ksu_cred);
 
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-    susfs_run_sus_path_loop();
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+    vndfs_run_sus_path_loop();
+#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
 
     revert_creds(saved);
     kfree(tw);
 }
 
-static void vnd_handle_extra_susfs_work(void)
+static void vnd_handle_extra_vndfs_work(void)
 {
-    struct susfs_handle_setuid_tw *tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
+    struct vndfs_handle_setuid_tw *tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
 
     if (!tw) {
         pr_debug("susfs: No enough memory\n");
         return;
     }
 
-    tw->cb.func = susfs_handle_setuid_tw_func;
+    tw->cb.func = vndfs_handle_setuid_tw_func;
 
     int err = task_work_add(current, &tw->cb, TWA_RESUME);
     if (err) {
         kfree(tw);
-        pr_debug("susfs: Failed adding task_work 'susfs_handle_setuid_tw', err: %d\n", err);
+        pr_debug("susfs: Failed adding task_work 'vndfs_handle_setuid_tw', err: %d\n", err);
     }
 }
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-extern void susfs_try_umount(uid_t uid);
-#endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+#ifdef CONFIG_KSU_VNDFS_TRY_UMOUNT
+extern void vndfs_try_umount(uid_t uid);
+#endif // #ifdef CONFIG_KSU_VNDFS_TRY_UMOUNT
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 static void ksu_install_manager_fd_tw_func(struct callback_head *cb)
@@ -105,16 +105,16 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
     uid_t old_uid = current_uid().val;
 
     // We only interest in process spwaned by zygote
-    if (!susfs_is_sid_equal(current_cred(), susfs_zygote_sid)) {
+    if (!vndfs_is_sid_equal(current_cred(), vndfs_zygote_sid)) {
         return 0;
     }
 
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#ifdef CONFIG_KSU_VNDFS_SUS_MOUNT
     // Check if spawned process is isolated service first, and force to do umount if so  
     if (is_zygote_isolated_service_uid(new_uid)) {
         goto do_umount;
     }
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#endif // #ifdef CONFIG_KSU_VNDFS_SUS_MOUNT
 
     pr_debug("handle_setresuid from %d to %d\n", old_uid, new_uid);
 
@@ -174,19 +174,19 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 
 do_umount:
     // Handle kernel umount
-#ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
+#ifndef CONFIG_KSU_VNDFS_TRY_UMOUNT
     vnd_handle_umount(old_uid, new_uid);
 #else
-    susfs_try_umount(new_uid);
-#endif // #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
+    vndfs_try_umount(new_uid);
+#endif // #ifndef CONFIG_KSU_VNDFS_TRY_UMOUNT
 
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-    //susfs_run_sus_path_loop(new_uid);
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+    //vndfs_run_sus_path_loop(new_uid);
+#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
 
-    vnd_handle_extra_susfs_work();
+    vnd_handle_extra_vndfs_work();
 
-    susfs_set_current_proc_umounted();
+    vndfs_set_current_proc_umounted();
 
     return 0;
 }

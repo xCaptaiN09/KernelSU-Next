@@ -87,12 +87,12 @@ static void ksu_prctl_reply(unsigned long arg5, int error)
 		pr_debug("prctl reply error: %d\n", error);
 }
 
-static int vnd_handle_susfs_prctl(unsigned long cmd, unsigned long arg3,
+static int vnd_handle_vndfs_prctl(unsigned long cmd, unsigned long arg3,
 				  unsigned long arg5)
 {
 	int error = -EOPNOTSUPP;
 
-	error = susfs_handle_ioctl((unsigned int)cmd, arg3) ? 0 : -EOPNOTSUPP;
+	error = vndfs_handle_ioctl((unsigned int)cmd, arg3) ? 0 : -EOPNOTSUPP;
 
 	ksu_prctl_reply(arg5, error);
 	return 0;
@@ -103,10 +103,10 @@ int vnd_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		     unsigned long arg4, unsigned long arg5)
 {
 #ifdef CONFIG_KSU_SUSFS
-	if (option >= CMD_SUSFS_ADD_SUS_PATH && option <= CMD_SUSFS_ADD_SUS_MAP) {
+	if (option >= CMD_VNDFS_ADD_SUS_PATH && option <= CMD_VNDFS_ADD_SUS_MAP) {
 		if (current_uid().val != 0 && !is_manager())
 			return -EPERM;
-		return vnd_handle_susfs_prctl(option, arg2, arg4);
+		return vnd_handle_vndfs_prctl(option, arg2, arg4);
 	}
 #endif
 
@@ -129,8 +129,8 @@ int vnd_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 #endif
 
 #ifdef CONFIG_KSU_SUSFS
-	if (arg2 >= CMD_SUSFS_ADD_SUS_PATH && arg2 <= CMD_SUSFS_ADD_SUS_MAP)
-		return vnd_handle_susfs_prctl(arg2, arg3, arg5);
+	if (arg2 >= CMD_VNDFS_ADD_SUS_PATH && arg2 <= CMD_VNDFS_ADD_SUS_MAP)
+		return vnd_handle_vndfs_prctl(arg2, arg3, arg5);
 #endif
 
 	return -ENOSYS;
@@ -166,12 +166,12 @@ int vnd_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 	u64 reply = (u64)*arg;
 
 #ifdef CONFIG_KSU_SUSFS
-	if (magic2 == SUSFS_MAGIC) {
+	if (magic2 == VNDFS_MAGIC) {
 		if (current_uid().val != 0 && !is_manager())
 			return 0;
 
-		if (cmd >= CMD_SUSFS_ADD_SUS_PATH && cmd <= CMD_SUSFS_ADD_SUS_MAP)
-			susfs_handle_ioctl(cmd, (unsigned long)*arg);
+		if (cmd >= CMD_VNDFS_ADD_SUS_PATH && cmd <= CMD_VNDFS_ADD_SUS_MAP)
+			vndfs_handle_ioctl(cmd, (unsigned long)*arg);
 
 		return 0;
 	}

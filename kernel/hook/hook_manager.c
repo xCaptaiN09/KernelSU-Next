@@ -71,7 +71,7 @@ static void ksu_unregister_sys_enter_hook(void)
 #endif
 }
 
-void ksu_susfs_enable_sus_su(void)
+void ksu_vndfs_enable_sus_su(void)
 {
 	mutex_lock(&ksu_trace_hook_lock);
 	ksu_devpts_hook = false;
@@ -80,7 +80,7 @@ void ksu_susfs_enable_sus_su(void)
 	mutex_unlock(&ksu_trace_hook_lock);
 }
 
-void ksu_susfs_disable_sus_su(void)
+void ksu_vndfs_disable_sus_su(void)
 {
 	mutex_lock(&ksu_trace_hook_lock);
 	ksu_devpts_hook = true;
@@ -469,13 +469,13 @@ void __exit ksu_syscall_hook_manager_exit(void)
 
 bool ksu_devpts_hook __read_mostly = true;
 
-void ksu_susfs_enable_sus_su(void)
+void ksu_vndfs_enable_sus_su(void)
 {
 	ksu_devpts_hook = false;
 	ksu_su_compat_enabled = false;
 }
 
-void ksu_susfs_disable_sus_su(void)
+void ksu_vndfs_disable_sus_su(void)
 {
 	ksu_devpts_hook = true;
 	ksu_su_compat_enabled = true;

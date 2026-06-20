@@ -99,7 +99,7 @@ static int do_report_event(void __user *arg)
 				pr_debug("boot_complete triggered\n");
 				on_boot_completed();
 #ifdef CONFIG_KSU_SUSFS
-            	susfs_start_sdcard_monitor_fn();
+            	vndfs_start_sdcard_monitor_fn();
 #endif // #ifdef CONFIG_KSU_SUSFS
 			}
 		}
@@ -437,7 +437,7 @@ static int do_manage_mark(void __user *arg)
 		cmd.result = (u32)ret;
 		break;
 #else
-        if (susfs_is_current_proc_umounted()) {
+        if (vndfs_is_current_proc_umounted()) {
             ret = 0; // SYSCALL_TRACEPOINT is NOT flagged
         } else {
             ret = 1; // SYSCALL_TRACEPOINT is flagged
