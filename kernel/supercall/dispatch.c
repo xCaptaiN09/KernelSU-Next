@@ -6,7 +6,7 @@
 #include <linux/version.h>
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/namei.h>
-#include <linux/susfs.h>
+#include <linux/vndfs.h>
 #include "objsec.h"
 #endif // #ifdef CONFIG_KSU_SUSFS
 #include "uapi/supercall.h"

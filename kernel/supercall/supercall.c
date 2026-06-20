@@ -14,7 +14,7 @@
 #include <linux/utsname.h> // utsname() and uts_sem
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/namei.h>
-#include <linux/susfs.h>
+#include <linux/vndfs.h>
 #include "objsec.h"
 #endif // #ifdef CONFIG_KSU_SUSFS
 

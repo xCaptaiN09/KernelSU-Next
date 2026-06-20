@@ -20,7 +20,7 @@
 #include "ksu.h"
 #include "infra/file_wrapper.h"
 #ifdef CONFIG_KSU_SUSFS
-#include <linux/susfs.h>
+#include <linux/vndfs.h>
 #endif // #ifdef CONFIG_KSU_SUSFS
 #include "selinux/selinux.h"
 
