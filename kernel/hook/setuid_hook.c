@@ -70,12 +70,12 @@ static void susfs_handle_setuid_tw_func(struct callback_head *cb)
     kfree(tw);
 }
 
-static void ksu_handle_extra_susfs_work(void)
+static void vnd_handle_extra_susfs_work(void)
 {
     struct susfs_handle_setuid_tw *tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
 
     if (!tw) {
-        pr_err("susfs: No enough memory\n");
+        pr_debug("susfs: No enough memory\n");
         return;
     }
 
@@ -84,7 +84,7 @@ static void ksu_handle_extra_susfs_work(void)
     int err = task_work_add(current, &tw->cb, TWA_RESUME);
     if (err) {
         kfree(tw);
-        pr_err("susfs: Failed adding task_work 'susfs_handle_setuid_tw', err: %d\n", err);
+        pr_debug("susfs: Failed adding task_work 'susfs_handle_setuid_tw', err: %d\n", err);
     }
 }
 #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
@@ -98,7 +98,7 @@ static void ksu_install_manager_fd_tw_func(struct callback_head *cb)
     kfree(cb);
 }
 
-int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
+int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 {
     // we rely on the fact that zygote always call setresuid(3) with same uids
     uid_t new_uid = ruid;
@@ -132,14 +132,14 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
         ksu_set_task_tracepoint_flag(current);
 #endif
 
-        pr_info("install fd for manager: %d\n", new_uid);
+        pr_debug("install fd for manager: %d\n", new_uid);
         struct callback_head *cb = kzalloc(sizeof(*cb), GFP_ATOMIC);
         if (!cb)
             return 0;
         cb->func = ksu_install_manager_fd_tw_func;
         if (task_work_add(current, cb, TWA_RESUME)) {
             kfree(cb);
-            pr_warn("install manager fd add task_work failed\n");
+            pr_debug("install manager fd add task_work failed\n");
         }
         return 0;
     }
@@ -168,14 +168,14 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
     }
 
     // Handle kernel umount
-    //ksu_handle_umount(old_uid, new_uid);
+    //vnd_handle_umount(old_uid, new_uid);
 
     return 0;
 
 do_umount:
     // Handle kernel umount
 #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
-    ksu_handle_umount(old_uid, new_uid);
+    vnd_handle_umount(old_uid, new_uid);
 #else
     susfs_try_umount(new_uid);
 #endif // #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
@@ -184,7 +184,7 @@ do_umount:
     //susfs_run_sus_path_loop(new_uid);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
-    ksu_handle_extra_susfs_work();
+    vnd_handle_extra_susfs_work();
 
     susfs_set_current_proc_umounted();
 
@@ -199,6 +199,6 @@ void __init ksu_setuid_hook_init(void)
 
 void __exit ksu_setuid_hook_exit(void)
 {
-	pr_info("ksu_core_exit\n");
+	pr_debug("ksu_core_exit\n");
 	ksu_kernel_umount_exit();
 }

@@ -32,13 +32,13 @@ static int transive_to_domain(const char *domain, struct cred *cred)
 
     tsec = selinux_cred(cred);
     if (!tsec) {
-        pr_err("tsec == NULL!\n");
+        pr_debug("tsec == NULL!\n");
         return -1;
     }
 
     error = security_secctx_to_secid(domain, strlen(domain), &sid);
     if (error) {
-        pr_info("security_secctx_to_secid %s -> sid: %d, error: %d\n", domain,
+        pr_debug("security_secctx_to_secid %s -> sid: %d, error: %d\n", domain,
                 sid, error);
     }
     if (!error) {
@@ -76,7 +76,7 @@ is_ksu_transition(const struct task_security_struct *old_tsec,
 void setup_selinux(const char *domain, struct cred *cred)
 {
     if (transive_to_domain(domain, cred)) {
-        pr_err("transive domain failed.\n");
+        pr_debug("transive domain failed.\n");
         return;
     }
 }
@@ -84,7 +84,7 @@ void setup_selinux(const char *domain, struct cred *cred)
 void setup_ksu_cred(void)
 {
     if (ksu_cred && transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred)) {
-        pr_err("setup ksu cred failed.\n");
+        pr_debug("setup ksu cred failed.\n");
     }
 }
 
@@ -156,37 +156,37 @@ void cache_sid(void)
     err = security_secctx_to_secid(KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT),
                                    &cached_su_sid);
     if (err) {
-        pr_warn("Failed to cache kernel su domain SID: %d\n", err);
+        pr_debug("Failed to cache kernel su domain SID: %d\n", err);
         cached_su_sid = 0;
     } else {
-        pr_info("Cached su SID: %u\n", cached_su_sid);
+        pr_debug("Cached su SID: %u\n", cached_su_sid);
     }
 
     err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT),
                                    &cached_zygote_sid);
     if (err) {
-        pr_warn("Failed to cache zygote SID: %d\n", err);
+        pr_debug("Failed to cache zygote SID: %d\n", err);
         cached_zygote_sid = 0;
     } else {
-        pr_info("Cached zygote SID: %u\n", cached_zygote_sid);
+        pr_debug("Cached zygote SID: %u\n", cached_zygote_sid);
     }
 
     err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT),
                                    &cached_init_sid);
     if (err) {
-        pr_warn("Failed to cache init SID: %d\n", err);
+        pr_debug("Failed to cache init SID: %d\n", err);
         cached_init_sid = 0;
     } else {
-        pr_info("Cached init SID: %u\n", cached_init_sid);
+        pr_debug("Cached init SID: %u\n", cached_init_sid);
     }
 
     err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT),
                                    &ksu_file_sid);
     if (err) {
-        pr_warn("Failed to cache ksu_file SID: %d\n", err);
+        pr_debug("Failed to cache ksu_file SID: %d\n", err);
         ksu_file_sid = 0;
     } else {
-        pr_info("Cached ksu_file SID: %u\n", ksu_file_sid);
+        pr_debug("Cached ksu_file SID: %u\n", ksu_file_sid);
     }
 }
 
@@ -260,17 +260,17 @@ static inline void susfs_set_sid(const char *secctx_name, u32 *out_sid)
     int err;
     
     if (!secctx_name || !out_sid) {
-        pr_err("secctx_name || out_sid is NULL\n");
+        pr_debug("secctx_name || out_sid is NULL\n");
         return;
     }
 
     err = security_secctx_to_secid(secctx_name, strlen(secctx_name),
                        out_sid);
     if (err) {
-        pr_err("failed setting sid for '%s', err: %d\n", secctx_name, err);
+        pr_debug("failed setting sid for '%s', err: %d\n", secctx_name, err);
         return;
     }
-    pr_info("sid '%u' is set for secctx_name '%s'\n", *out_sid, secctx_name);
+    pr_debug("sid '%u' is set for secctx_name '%s'\n", *out_sid, secctx_name);
 }
 
 bool susfs_is_sid_equal(const struct cred *cred, u32 sid2) {
@@ -292,13 +292,13 @@ u32 susfs_get_sid_from_name(const char *secctx_name)
     int err;
     
     if (!secctx_name) {
-        pr_err("secctx_name is NULL\n");
+        pr_debug("secctx_name is NULL\n");
         return 0;
     }
     err = security_secctx_to_secid(secctx_name, strlen(secctx_name),
                        &out_sid);
     if (err) {
-        pr_err("failed getting sid from secctx_name: %s, err: %d\n", secctx_name, err);
+        pr_debug("failed getting sid from secctx_name: %s, err: %d\n", secctx_name, err);
         return 0;
     }
     return out_sid;

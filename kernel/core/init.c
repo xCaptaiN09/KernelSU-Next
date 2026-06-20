@@ -27,15 +27,15 @@
 extern struct kset *module_kset;
 
 extern void __init ksu_lsm_hook_init(void);
-extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+extern int vnd_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 					void *argv, void *envp, int *flags);
-extern int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+extern int vnd_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 				    void *argv, void *envp, int *flags);
-int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+int vnd_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
 			void *envp, int *flags)
 {
-	ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
-	return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
+	vnd_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
+	return vnd_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
 					    flags);
 }
 
@@ -99,7 +99,7 @@ int __init kernelsu_init(void)
 
     ksu_cred = prepare_creds();
     if (!ksu_cred) {
-        pr_err("prepare cred failed!\n");
+        pr_debug("prepare cred failed!\n");
     }
 
 	ksu_feature_init();
@@ -109,7 +109,7 @@ int __init kernelsu_init(void)
 	
 
 	if (ksu_late_loaded) {
-		pr_info("late load mode, skipping kprobe hooks\n");
+		pr_debug("late load mode, skipping kprobe hooks\n");
 
 		apply_kernelsu_rules();
 		cache_sid();
@@ -133,7 +133,7 @@ int __init kernelsu_init(void)
 		track_throne(false);
 
 		if (!getenforce()) {
-			pr_info("Permissive SELinux, enforcing\n");
+			pr_debug("Permissive SELinux, enforcing\n");
 			setenforce(true);
 		}
 

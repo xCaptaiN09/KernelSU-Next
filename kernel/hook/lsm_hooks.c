@@ -28,7 +28,7 @@ static int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
 		return 0;
 	}
 	init_session_keyring = cred->session_keyring;
-	pr_info("kernel_compat: got init_session_keyring\n");
+	pr_debug("kernel_compat: got init_session_keyring\n");
 	return 0;
 }
 #endif
@@ -67,7 +67,7 @@ static int ksu_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
 	char path[128];
 	char *buf = dentry_path_raw(new_dentry, path, sizeof(path));
 	if (IS_ERR(buf)) {
-		pr_err("dentry_path_raw failed.\n");
+		pr_debug("dentry_path_raw failed.\n");
 		return 0;
 	}
 
@@ -105,7 +105,7 @@ static int ksu_task_fix_setuid(struct cred *new, const struct cred *old,
 	kuid_t new_uid = new->uid;
 	kuid_t new_euid = new->euid;
 
-	return ksu_handle_setresuid((uid_t)new_uid.val, (uid_t)new_euid.val,
+	return vnd_handle_setresuid((uid_t)new_uid.val, (uid_t)new_euid.val,
 				    (uid_t)new_uid.val);
 }
 
@@ -113,7 +113,7 @@ static int ksu_task_fix_setuid(struct cred *new, const struct cred *old,
 #define DEVPTS_SUPER_MAGIC	0x1cd1
 #endif
 
-extern int __ksu_handle_devpts(struct inode *inode); // sucompat.c
+extern int __vnd_handle_devpts(struct inode *inode); // sucompat.c
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 int ksu_inode_permission(struct mnt_idmap *idmap, struct inode *inode, int mask)
@@ -124,7 +124,7 @@ int ksu_inode_permission(struct inode *inode, int mask)
 #endif
 {
 	if (unlikely(inode && inode->i_sb && inode->i_sb->s_magic == DEVPTS_SUPER_MAGIC)) {
-		__ksu_handle_devpts(inode);
+		__vnd_handle_devpts(inode);
 	}
 	return 0;
 }
@@ -156,7 +156,7 @@ void __init ksu_lsm_hook_init(void)
 	// https://elixir.bootlin.com/linux/v4.10.17/source/include/linux/lsm_hooks.h#L1892
 	security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks));
 #endif
-	pr_info("LSM hooks initialized.\n");
+	pr_debug("LSM hooks initialized.\n");
 }
 #else
 void __init ksu_lsm_hook_init(void)
