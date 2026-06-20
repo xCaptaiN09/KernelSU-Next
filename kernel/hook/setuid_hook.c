@@ -49,9 +49,9 @@ static inline bool is_zygote_normal_app_uid(uid_t uid)
 extern u32 vndfs_zygote_sid;
 extern struct cred *ksu_cred;
 
-#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern void vndfs_run_sus_path_loop(void);
-#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
 struct vndfs_handle_setuid_tw {
     struct callback_head cb;
@@ -62,9 +62,9 @@ static void vndfs_handle_setuid_tw_func(struct callback_head *cb)
     struct vndfs_handle_setuid_tw *tw = container_of(cb, struct vndfs_handle_setuid_tw, cb);
     const struct cred *saved = override_creds(ksu_cred);
 
-#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
     vndfs_run_sus_path_loop();
-#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
     revert_creds(saved);
     kfree(tw);
@@ -87,9 +87,9 @@ static void vnd_handle_extra_vndfs_work(void)
         pr_debug("susfs: Failed adding task_work 'vndfs_handle_setuid_tw', err: %d\n", err);
     }
 }
-#ifdef CONFIG_KSU_VNDFS_TRY_UMOUNT
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 extern void vndfs_try_umount(uid_t uid);
-#endif // #ifdef CONFIG_KSU_VNDFS_TRY_UMOUNT
+#endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 static void ksu_install_manager_fd_tw_func(struct callback_head *cb)
@@ -109,12 +109,12 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
         return 0;
     }
 
-#ifdef CONFIG_KSU_VNDFS_SUS_MOUNT
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
     // Check if spawned process is isolated service first, and force to do umount if so  
     if (is_zygote_isolated_service_uid(new_uid)) {
         goto do_umount;
     }
-#endif // #ifdef CONFIG_KSU_VNDFS_SUS_MOUNT
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
     pr_debug("handle_setresuid from %d to %d\n", old_uid, new_uid);
 
@@ -174,15 +174,15 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 
 do_umount:
     // Handle kernel umount
-#ifndef CONFIG_KSU_VNDFS_TRY_UMOUNT
+#ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
     vnd_handle_umount(old_uid, new_uid);
 #else
     vndfs_try_umount(new_uid);
-#endif // #ifndef CONFIG_KSU_VNDFS_TRY_UMOUNT
+#endif // #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
 
-#ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
     //vndfs_run_sus_path_loop(new_uid);
-#endif // #ifdef CONFIG_KSU_VNDFS_SUS_PATH
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
     vnd_handle_extra_vndfs_work();
 
