@@ -20,3 +20,4 @@ struct mount_entry {
 extern struct list_head mount_list;
 extern struct rw_semaphore mount_list_lock;
 
+#endif
