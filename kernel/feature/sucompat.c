@@ -87,51 +87,69 @@ static char __user *ksud_user_path(void)
 }
 
 int vnd_handle_faccessat(int *dfd, const char __user **filename_user,
-		int *mode, int *__unused_flags)
+        int *mode, int *__unused_flags)
 {
-	const char su[] = SU_PATH;
+    const char su[] = SU_PATH;
+    const char suspicious_str1[] = "su";
+    const char suspicious_str2[] = "magisk";
+    const char suspicious_str3[] = "ksud";
 
-	if (!ksu_is_allow_uid_for_current(current_uid().val)) {
-		return 0;
-	}
+    char path[128];
+    memset(path, 0, sizeof(path));
+    strncpy_from_user_nofault(path, *filename_user, sizeof(path) - 1);
 
-	char path[sizeof(su) + 1];
-	memset(path, 0, sizeof(path));
-	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+    // If the app is NOT rooted, hide suspicious paths completely
+    if (!ksu_is_allow_uid_for_current(current_uid().val)) {
+        if (strstr(path, suspicious_str1) || strstr(path, suspicious_str2) || strstr(path, suspicious_str3)) {
+            return -ENOENT;
+        }
+        return 0;
+    }
 
-	if (unlikely(!memcmp(path, su, sizeof(su)))) {
-		write_sulog('a');
-		pr_debug("faccessat su->sh!\n");
-		*filename_user = sh_user_path();
-	}
+    // If the app IS rooted, spoof /system/bin/su to sh
+    if (unlikely(!memcmp(path, su, sizeof(su)))) {
+        write_sulog('a');
+        pr_debug("faccessat su->sh!
+");
+        *filename_user = sh_user_path();
+    }
 
-	return 0;
+    return 0;
 }
 
 int vnd_handle_stat(int *dfd, const char __user **filename_user, int *flags)
 {
-	// const char sh[] = SH_PATH;
-	const char su[] = SU_PATH;
+    // const char sh[] = SH_PATH;
+    const char su[] = SU_PATH;
+    const char suspicious_str1[] = "su";
+    const char suspicious_str2[] = "magisk";
+    const char suspicious_str3[] = "ksud";
 
-	if (!ksu_is_allow_uid_for_current(current_uid().val)) {
-		return 0;
-	}
+    if (unlikely(!filename_user)) {
+        return 0;
+    }
 
-	if (unlikely(!filename_user)) {
-		return 0;
-	}
+    char path[128];
+    memset(path, 0, sizeof(path));
+    strncpy_from_user_nofault(path, *filename_user, sizeof(path) - 1);
 
-	char path[sizeof(su) + 1];
-	memset(path, 0, sizeof(path));
-	strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+    // If the app is NOT rooted, hide suspicious paths completely
+    if (!ksu_is_allow_uid_for_current(current_uid().val)) {
+        if (strstr(path, suspicious_str1) || strstr(path, suspicious_str2) || strstr(path, suspicious_str3)) {
+            return -ENOENT;
+        }
+        return 0;
+    }
 
-	if (unlikely(!memcmp(path, su, sizeof(su)))) {
-		write_sulog('s');
-		pr_debug("newfstatat su->sh!\n");
-		*filename_user = sh_user_path();
-	}
+    // If the app IS rooted, spoof /system/bin/su to sh
+    if (unlikely(!memcmp(path, su, sizeof(su)))) {
+        write_sulog('s');
+        pr_debug("newfstatat su->sh!
+");
+        *filename_user = sh_user_path();
+    }
 
-	return 0;
+    return 0;
 }
 
 long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs)
