@@ -31,8 +31,8 @@ static inline u32 current_sid(void)
 }
 #endif
 
-#define KERNEL_SU_DOMAIN "vnd6893"
-#define KERNEL_SU_FILE "vnd6893_file"
+#define KERNEL_SU_DOMAIN "ksu"
+#define KERNEL_SU_FILE "ksu_file"
 
 #define KERNEL_SU_CONTEXT "u:r:" KERNEL_SU_DOMAIN ":s0"
 #define KSU_FILE_CONTEXT "u:object_r:" KERNEL_SU_FILE ":s0"
