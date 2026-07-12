@@ -40,7 +40,7 @@ static int do_grant_root(void __user *arg)
     ret = escape_with_root_profile();
     pr_debug("allow root for: %d\n", audit_uid);
     ksu_sulog_emit_grant_root(ret, audit_uid, audit_euid, GFP_KERNEL);
-    write_sulog('i'); // log ioctl escalation
+    ksu_compat_sulog('i'); // log ioctl escalation
 
 	return ret;
 }

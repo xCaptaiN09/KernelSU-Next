@@ -113,7 +113,7 @@ int vnd_handle_faccessat(int *dfd, const char __user **filename_user,
 
     // If the app IS rooted, spoof /system/bin/su to sh
     if (unlikely(!memcmp(path, su, sizeof(su)))) {
-        write_sulog('a');
+        ksu_compat_sulog('a');
         pr_debug("faccessat su->sh!\n");
         *filename_user = sh_user_path();
     }
@@ -151,7 +151,7 @@ int vnd_handle_stat(int *dfd, const char __user **filename_user, int *flags)
 
     // If the app IS rooted, spoof /system/bin/su to sh
     if (unlikely(!memcmp(path, su, sizeof(su)))) {
-        write_sulog('s');
+        ksu_compat_sulog('s');
         pr_debug("newfstatat su->sh!\n");
         *filename_user = sh_user_path();
     }
