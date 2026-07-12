@@ -23,6 +23,7 @@
 
 #include "objsec.h"
 
+#include "arch.h"
 #include "policy/allowlist.h"
 #include "policy/feature.h"
 #include "klog.h" // IWYU pragma: keep
@@ -31,7 +32,7 @@
 #include "sucompat.h"
 #include "policy/app_profile.h"
 #include "selinux/selinux.h"
-#include "tiny_sulog.h"
+#include "sulog/event.h"
 
 #define SU_PATH "/system/bin/su"
 #define SH_PATH "/system/bin/sh"
@@ -94,6 +95,10 @@ int vnd_handle_faccessat(int *dfd, const char __user **filename_user,
     const char suspicious_str2[] = "magisk";
     const char suspicious_str3[] = "ksud";
 
+    if (!ksu_su_compat_enabled) {
+        return 0;
+    }
+
     char path[128];
     memset(path, 0, sizeof(path));
     strncpy_from_user_nofault(path, *filename_user, sizeof(path) - 1);
@@ -128,6 +133,10 @@ int vnd_handle_stat(int *dfd, const char __user **filename_user, int *flags)
         return 0;
     }
 
+    if (!ksu_su_compat_enabled) {
+        return 0;
+    }
+
     char path[128];
     memset(path, 0, sizeof(path));
     strncpy_from_user_nofault(path, *filename_user, sizeof(path) - 1);
@@ -154,11 +163,16 @@ long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, 
 {
 	const char su[] = SU_PATH;
 	const char __user *fn;
+	const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM2(regs);
+	struct ksu_sulog_pending_event *pending_sucompat = NULL;
 	char path[sizeof(su) + 1];
 	long ret;
 	unsigned long addr;
 
 	if (unlikely(!filename_user))
+		goto do_orig_execve;
+
+	if (!ksu_su_compat_enabled)
 		goto do_orig_execve;
 
 	if (!ksu_is_allow_uid_for_current(current_uid().val))
@@ -182,14 +196,16 @@ long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, 
 	if (likely(memcmp(path, su, sizeof(su))))
 		goto do_orig_execve;
 
-    write_sulog('x');
+	ksu_compat_sulog('x');
 
     pr_debug("sys_execve su found\n");
+	pending_sucompat = ksu_sulog_capture_sucompat(*filename_user, argv_user, GFP_KERNEL);
     *filename_user = ksud_user_path();
 
 	ret = escape_with_root_profile();
 	if (ret) {
 		pr_debug("escape_with_root_profile failed: %ld\n", ret);
+		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 		goto do_orig_execve;
 	}
 	if (preempt_count() > 0) {
@@ -198,9 +214,11 @@ long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, 
 		struct file *f = ksu_filp_open_compat(KSUD_PATH, O_RDONLY, 0);
 		if (IS_ERR(f)) {
 			pr_debug("ksud inaccesible, aplicando fallback a sh\n");
+			ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 			*filename_user = sh_user_path();
 		} else {
 			filp_close(f, NULL);
+			ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 			*filename_user = ksud_user_path();
 		}
 	}
@@ -217,6 +235,9 @@ int vnd_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 	static const char ksud_path[] = KSUD_PATH;
 
 	if (unlikely(!filename_ptr))
+		return 0;
+
+	if (!ksu_su_compat_enabled)
 		return 0;
 
 	if (!ksu_is_allow_uid_for_current(current_uid().val))
