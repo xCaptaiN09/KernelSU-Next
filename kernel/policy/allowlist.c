@@ -158,12 +158,19 @@ static bool profile_valid(struct app_profile *profile)
 		return false;
 	}
 
+	bool need_migrate_su_domain = false;
+
+	if (unlikely(profile->version == 2)) {
+		profile->version = KSU_APP_PROFILE_VER;
+		need_migrate_su_domain = true;
+	}
+
 	if (strnlen(profile->key, sizeof(profile->key)) >= sizeof(profile->key)) {
 		pr_debug("invalid app_profile key\n");
 		return false;
 	}
 
-	if (profile->version != KSU_APP_PROFILE_VER) {
+	if (profile->version < KSU_APP_PROFILE_VER) {
 		pr_debug("Unsupported profile version: %d\n", profile->version);
 		return false;
 	}
@@ -175,6 +182,7 @@ static bool profile_valid(struct app_profile *profile)
 			return false;
 		}
 
+		char *domain = profile->rp_config.profile.selinux_domain;
 		static const size_t domain_len = sizeof(profile->rp_config.profile.selinux_domain);
 		if (unlikely(need_migrate_su_domain)) {
 			if (strncmp(domain, "u:r:su:s0", domain_len) == 0) {
