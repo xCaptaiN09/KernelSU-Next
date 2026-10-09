@@ -12,6 +12,7 @@
 #include <linux/uaccess.h>
 #include <linux/uidgid.h>
 
+#include "policy/app_profile.h"
 #include "policy/allowlist.h"
 #include "hook/setuid_hook.h"
 #include "klog.h" // IWYU pragma: keep
@@ -25,8 +26,6 @@
 #include <linux/vndfs.h>
 #include <linux/vndfs_def.h>
 #endif // #ifdef CONFIG_KSU_SUSFS
-
-extern void disable_seccomp(struct task_struct *tsk);
 
 #ifdef CONFIG_KSU_SUSFS
 static inline bool is_zygote_isolated_service_uid(uid_t uid)
@@ -120,7 +119,7 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
             ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
         }
 #else
-		disable_seccomp(current);
+		disable_seccomp();
 #endif
 
 #ifdef KSU_KPROBES_HOOK
@@ -150,7 +149,7 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
             ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
         }
 #else
-		disable_seccomp(current);
+		disable_seccomp();
 #endif
 
 #ifdef KSU_KPROBES_HOOK

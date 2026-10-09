@@ -122,7 +122,7 @@ static bool check_block(struct file *fp, loff_t *pos, loff_t block_end, unsigned
 		return false;
 
 	if (certificate_size > CERT_MAX_LENGTH) {
-		pr_info("cert length overlimit\n");
+		pr_debug("cert length overlimit\n");
 		return false;
 	}
 
@@ -132,7 +132,7 @@ static bool check_block(struct file *fp, loff_t *pos, loff_t block_end, unsigned
 
 	unsigned char digest[SHA256_DIGEST_SIZE];
 	if (ksu_sha256(cert, certificate_size, digest)) {
-		pr_info("sha256 error\n");
+		pr_debug("sha256 error\n");
 		return false;
 	}
 
@@ -140,7 +140,7 @@ static bool check_block(struct file *fp, loff_t *pos, loff_t block_end, unsigned
 	hash_str[SHA256_DIGEST_SIZE * 2] = '\0';
 
 	bin2hex(hash_str, digest, SHA256_DIGEST_SIZE);
-	pr_info("sha256: %s, expected: %s\n", hash_str, expected_sha256);
+	pr_debug("sha256: %s, expected: %s\n", hash_str, expected_sha256);
 	return strcmp(expected_sha256, hash_str) == 0;
 }
 
@@ -478,6 +478,40 @@ int get_pkg_from_apk_path(char *pkg, const char *path)
 
 	// Copying the package name
 	memcpy(pkg, second_last_slash + 1, pkg_len);
+	pkg[pkg_len] = '\0';
+
+	return 0;
+}
+
+// /data/app/XXXXX/<PACKAGE_NAME>-YYY, which contains base.apk
+int get_pkg_from_apk_dir_path(char *pkg, const char *path)
+{
+	int len = strlen(path);
+	if (len >= KSU_MAX_PACKAGE_NAME || len < 1)
+		return -1;
+
+	const char *last_slash = NULL;
+	int i;
+	for (i = len - 1; i >= 0; i--) {
+		if (path[i] == '/') {
+			last_slash = &path[i];
+			break;
+		}
+	}
+
+	if (!last_slash)
+		return -1;
+
+	const char *last_hyphen = strchr(last_slash, '-');
+	if (!last_hyphen)
+		return -1;
+
+	int pkg_len = last_hyphen - last_slash - 1;
+	if (pkg_len >= KSU_MAX_PACKAGE_NAME || pkg_len <= 0)
+		return -1;
+
+	// Copying the package name
+	memcpy(pkg, last_slash + 1, pkg_len);
 	pkg[pkg_len] = '\0';
 
 	return 0;

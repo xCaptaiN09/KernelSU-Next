@@ -527,6 +527,8 @@ static bool add_type_rule(struct policydb *db, const char *s, const char *t,
     key.specified = effect;
 
     struct avtab_node *node = get_avtab_node(db, &key, NULL);
+    if (!node)
+        return false;
     node->datum.u.data = def->value;
 
     return true;
@@ -633,18 +635,18 @@ static bool add_filename_trans(struct policydb *db, const char *s,
         trans = (struct filename_trans_datum *)kcalloc(1, sizeof(*trans),
                                                        GFP_KERNEL);
         if (!trans) {
-            pr_err("add_filename_trans: alloc filename_trans_datum failed\n");
+            pr_debug("add_filename_trans: alloc filename_trans_datum failed\n");
             goto out;
         }
         new_key = kzalloc(sizeof(*new_key), GFP_KERNEL);
         if (!new_key) {
-            pr_err("add_filename_trans: alloc filename_trans_key failed\n");
+            pr_debug("add_filename_trans: alloc filename_trans_key failed\n");
             goto free_trans;
         }
         *new_key = key;
         new_key->name = kstrdup(key.name, GFP_KERNEL);
         if (!new_key->name) {
-            pr_err("add_filename_trans: kstrdup name failed\n");
+            pr_debug("add_filename_trans: kstrdup name failed\n");
             goto free_key;
         }
         trans->next = last;
@@ -652,7 +654,7 @@ static bool add_filename_trans(struct policydb *db, const char *s,
         rc = hashtab_insert(&db->filename_trans, new_key, trans,
                             filenametr_key_params);
         if (rc) {
-            pr_err("add_filename_trans: hashtab_insert failed: %d\n", rc);
+            pr_debug("add_filename_trans: hashtab_insert failed: %d\n", rc);
             goto free_name;
         }
     }

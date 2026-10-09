@@ -157,11 +157,13 @@ int escape_with_root_profile(void)
 
 	if (cred->euid.val == 0) {
 		pr_debug("Already root, don't escape!\n");
+		ret = -EALREADY;
 		goto out_abort_creds;
 	}
 
     if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
         pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
+        ret = -EPERM;
         goto out_abort_creds;
     }
 
@@ -266,10 +268,10 @@ void __init ksu_app_profile_init(void)
     void *seccomp_filter_release_sym = find_kernel_symbol_exact("seccomp_filter_release");
     ret = kallsyms_lookup_size_offset(seccomp_filter_release_sym, &size, NULL);
     if (!ret || !size) {
-        pr_err("failed to get size of seccomp_filter_release: %d, use 128\n", ret);
+        pr_debug("failed to get size of seccomp_filter_release: %d, use 128\n", ret);
         size = 128;
     }
     has_call_to_spin_lock = scan_call_to(seccomp_filter_release_sym, size, raw_spin_lock_irq_sym) != NULL;
-    pr_info("seccomp_filter_release has_call_to_spin_lock = %d\n", has_call_to_spin_lock);
+    pr_debug("seccomp_filter_release has_call_to_spin_lock = %d\n", has_call_to_spin_lock);
 #endif
 }
