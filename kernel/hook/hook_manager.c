@@ -1,6 +1,7 @@
 #ifdef KSU_KPROBES_HOOK
 #include "linux/printk.h"
 #include <linux/mutex.h>
+#include <linux/limits.h>
 #include <linux/spinlock.h>
 #include <linux/kprobes.h>
 #include <linux/tracepoint.h>
@@ -10,10 +11,12 @@
 #include <trace/events/syscalls.h>
 
 #include "policy/allowlist.h"
+#include "policy/app_profile.h"
 #include "arch.h"
 #include "klog.h" // IWYU pragma: keep
 #include "hook_manager.h"
 #include "feature/sucompat.h"
+#include "feature/adb_root.h"
 #include "setuid_hook.h"
 #include "selinux/selinux.h"
 #include "compat/kernel_compat.h"
@@ -42,7 +45,13 @@ static int ksu_register_sys_enter_hook(void)
 	if (ksu_sys_enter_hook_enabled)
 		return 0;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
+	// Register with minimum priority so perf/bpf handlers run before
+	// we modify the syscall context
+	ret = register_trace_prio_sys_enter(ksu_sys_enter_handler, NULL, INT_MIN);
+#else
 	ret = register_trace_sys_enter(ksu_sys_enter_handler, NULL);
+#endif
 #ifndef CONFIG_KRETPROBES
 	ksu_mark_running_process_locked();
 #endif
@@ -356,7 +365,8 @@ int vnd_handle_init_mark_tracker(const char __user **filename_user)
 	if (unlikely(strcmp(path, KSUD_PATH) == 0)) {
 		pr_debug("hook_manager: escape to root for init executing ksud: %d\n", current->pid);
 		escape_to_root_for_init();
-	} else if (likely(strstr(path, "/app_process") == NULL && strstr(path, "/adbd") == NULL)) {
+	} else if (likely(strstr(path, "/app_process") == NULL && strstr(path, "/adbd") == NULL &&
+			  strstr(path, "/stub_zygote") == NULL)) {
 		pr_debug("hook_manager: unmark %d exec %s\n", current->pid, path);
 		ksu_clear_task_tracepoint_flag_if_needed(current);
 	}
@@ -394,18 +404,37 @@ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
 				return;
 			}
 
-			// Handle execve (y compatibilidad con arquitecturas híbridas)
+			// Handle execve/execveat (y compatibilidad con arquitecturas híbridas)
+			// New bionic (A17 QPR2+) maps execve to
+			// execveat(AT_FDCWD, path, argv, envp, 0), so both
+			// syscalls must be handled with their own register layout.
 #ifdef __NR_execveat
 			if (id == __NR_execve || id == __NR_execveat) {
 #else
 			if (id == __NR_execve) {
 #endif
+#ifdef __NR_execveat
+				bool is_execveat = (id == __NR_execveat);
+#else
+				bool is_execveat = false;
+#endif
 				const char __user **filename_user =
-					(const char __user **)&PT_REGS_PARM1(regs);
+					is_execveat ?
+						(const char __user **)&PT_REGS_PARM2(regs) :
+						(const char __user **)&PT_REGS_PARM1(regs);
+				long adb_ret;
 				if (current->pid != 1 && is_init(current_cred())) {
 					vnd_handle_init_mark_tracker(filename_user);
+					adb_ret = is_execveat ?
+						ksu_adb_root_handle_execveat(regs) :
+						ksu_adb_root_handle_execve(regs);
+					if (adb_ret) {
+						pr_err("adb root failed: %ld\n", adb_ret);
+					}
+				} else if (is_execveat) {
+					vnd_handle_execveat_sucompat_user(filename_user, 0, regs);
 				} else {
-					vnd_handle_execve_sucompat(filename_user, NULL, NULL);
+					vnd_handle_execve_sucompat(filename_user, 0, regs);
 				}
 				return;
 			}
@@ -441,7 +470,6 @@ void __init ksu_syscall_hook_manager_init(void)
 	ksu_setuid_hook_init();
 	ksu_sucompat_init();
 	ksu_avc_spoof_init();
-	ksu_selinux_hide_init();
 }
 
 void __exit ksu_syscall_hook_manager_exit(void)
@@ -459,7 +487,6 @@ void __exit ksu_syscall_hook_manager_exit(void)
 	ksu_sucompat_exit();
 	ksu_setuid_hook_exit();
 	ksu_avc_spoof_exit();
-    ksu_selinux_hide_exit();
 }
 #else
 #include <linux/cache.h>
@@ -468,6 +495,7 @@ void __exit ksu_syscall_hook_manager_exit(void)
 #include "hook_manager.h"
 #include "feature/sucompat.h"
 #include "setuid_hook.h"
+#include "syscall_table_hook.h"
 
 bool ksu_devpts_hook __read_mostly = true;
 
@@ -486,18 +514,22 @@ void ksu_vndfs_disable_sus_su(void)
 void __init ksu_syscall_hook_manager_init(void)
 {
 	pr_debug("hook_manager: initializing..\n");
+#ifdef KSU_SYSCALL_TABLE_HOOK
+	ksu_syscall_table_hook_init();
+#endif
 	ksu_setuid_hook_init();
 	ksu_sucompat_init();
 	ksu_avc_spoof_init();
-	ksu_selinux_hide_init();
 }
 
 void __exit ksu_syscall_hook_manager_exit(void)
 {
 	pr_debug("hook_manager: exiting..\n");
+#ifdef KSU_SYSCALL_TABLE_HOOK
+	ksu_syscall_table_hook_exit();
+#endif
 	ksu_sucompat_exit();
 	ksu_setuid_hook_exit();
 	ksu_avc_spoof_exit();
-    ksu_selinux_hide_exit();
 }
 #endif

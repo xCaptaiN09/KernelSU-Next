@@ -1,29 +1,24 @@
 #include <linux/compiler.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 #include <linux/sched/signal.h>
-#endif
 #include <linux/slab.h>
 #include <linux/task_work.h>
 #include <linux/thread_info.h>
 #include <linux/seccomp.h>
-#include <linux/bpf.h>
 #include <linux/printk.h>
 #include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/uidgid.h>
-#include <linux/version.h>
 
 #include "policy/allowlist.h"
-#include "setuid_hook.h"
+#include "hook/setuid_hook.h"
 #include "klog.h" // IWYU pragma: keep
 #include "manager/manager_identity.h"
-#include "selinux/selinux.h"
 #include "infra/seccomp_cache.h"
 #include "supercall/supercall.h"
-#include "hook_manager.h"
+#include "hook/hook_manager.h"
 #include "feature/kernel_umount.h"
 #include "compat/kernel_compat.h"
 #ifdef CONFIG_KSU_SUSFS
@@ -191,7 +186,6 @@ do_umount:
     return 0;
 }
 
-extern void ksu_lsm_hook_init(void);
 void __init ksu_setuid_hook_init(void)
 {
 	ksu_kernel_umount_init();

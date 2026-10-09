@@ -20,6 +20,7 @@
 #include <linux/sched.h>
 #endif
 #include <linux/ptrace.h>
+#include <linux/fcntl.h>
 
 #include "objsec.h"
 
@@ -159,15 +160,20 @@ int vnd_handle_stat(int *dfd, const char __user **filename_user, int *flags)
     return 0;
 }
 
-long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs)
+static long vnd_handle_execve_sucompat_common(const char __user **filename_user,
+		const char __user *const __user *argv_user, bool execveat,
+		const struct pt_regs *regs)
 {
 	const char su[] = SU_PATH;
 	const char __user *fn;
-	const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM2(regs);
 	struct ksu_sulog_pending_event *pending_sucompat = NULL;
 	char path[sizeof(su) + 1];
 	long ret;
 	unsigned long addr;
+
+	if (execveat && ((int)PT_REGS_PARM1(regs) != AT_FDCWD ||
+			 (int)PT_REGS_SYSCALL_PARM4(regs) != 0))
+		goto do_orig_execve;
 
 	if (unlikely(!filename_user))
 		goto do_orig_execve;
@@ -224,6 +230,20 @@ long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, 
 	}
 do_orig_execve:
 	return 0;
+}
+
+long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs)
+{
+	return vnd_handle_execve_sucompat_common(filename_user,
+			(const char __user *const __user *)PT_REGS_PARM2(regs),
+			false, regs);
+}
+
+long vnd_handle_execveat_sucompat_user(const char __user **filename_user, int orig_nr, const struct pt_regs *regs)
+{
+	return vnd_handle_execve_sucompat_common(filename_user,
+			(const char __user *const __user *)PT_REGS_PARM3(regs),
+			true, regs);
 }
 
 int vnd_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,

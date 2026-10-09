@@ -12,5 +12,6 @@ int vnd_handle_faccessat(int *dfd, const char __user **filename_user,
 				int *mode, int *__unused_flags);
 int vnd_handle_stat(int *dfd, const char __user **filename_user, int *flags);
 long vnd_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs);
+long vnd_handle_execveat_sucompat_user(const char __user **filename_user, int orig_nr, const struct pt_regs *regs);
 
 #endif
