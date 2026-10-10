@@ -1,3 +1,5 @@
+#include <asm/cacheflush.h>
+#include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/jump_label.h>
 #include <linux/mm.h>

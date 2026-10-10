@@ -1,3 +1,6 @@
+#include <linux/proc_fs.h>
+#include <linux/sched.h>
+#include <linux/task_work.h>
 #include <linux/dcache.h>
 #include <linux/errno.h>
 #include <linux/fdtable.h>
@@ -18,6 +21,7 @@
 #include <uapi/linux/fs.h>
 #endif
 
+#include "compat/kernel_compat.h"
 #include "arch.h"
 #include "klog.h" // IWYU pragma: keep
 #include "ksu.h"

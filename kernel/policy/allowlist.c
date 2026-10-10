@@ -1,3 +1,6 @@
+#include <linux/sched.h>
+#include <linux/sched/task.h>
+#include <linux/version.h>
 #include <linux/rcupdate.h>
 #include <linux/limits.h>
 #include <linux/rculist.h>

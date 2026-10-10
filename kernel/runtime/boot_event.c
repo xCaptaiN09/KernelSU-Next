@@ -4,6 +4,7 @@
 #include <linux/printk.h>
 #include <linux/workqueue.h>
 
+#include "selinux/selinux.h"
 #include "feature/selinux_hide.h"
 
 #include "policy/allowlist.h"

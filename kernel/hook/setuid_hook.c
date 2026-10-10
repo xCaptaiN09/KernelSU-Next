@@ -1,3 +1,4 @@
+#include <linux/bpf.h>
 #include <linux/compiler.h>
 #include <linux/version.h>
 #include <linux/sched/signal.h>
@@ -12,6 +13,7 @@
 #include <linux/uaccess.h>
 #include <linux/uidgid.h>
 
+#include "selinux/selinux.h"
 #include "policy/app_profile.h"
 #include "policy/allowlist.h"
 #include "hook/setuid_hook.h"

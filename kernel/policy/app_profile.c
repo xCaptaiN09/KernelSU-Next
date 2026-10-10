@@ -1,3 +1,13 @@
+#include <linux/err.h>
+#include <linux/fdtable.h>
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/pid.h>
+#include <linux/proc_ns.h>
+#include <linux/sched/task.h>
+#include <linux/syscalls.h>
+#include "arch.h"
+#include "compat/kernel_compat.h"
 #include "hook/patch_memory.h"
 #include "infra/symbol_resolver.h"
 #include "linux/kallsyms.h"
