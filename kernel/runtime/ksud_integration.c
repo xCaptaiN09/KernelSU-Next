@@ -43,6 +43,7 @@
 #include "ksud_boot.h"
 #include "feature/selinux_hide.h"
 #include "selinux/selinux.h"
+#include "policy/feature.h"
 #include "compat/kernel_compat.h"
 
 static const char KERNEL_SU_RC[] =
@@ -269,6 +270,7 @@ static void ksu_initialize_selinux_tw_func(struct callback_head *cb)
 {
 	ksu_selinux_hide_handle_second_stage();
 	apply_kernelsu_rules();
+	ksu_feature_apply_forced();
 	cache_sid();
 	setup_ksu_cred();
 	kfree(cb);
@@ -559,11 +561,7 @@ static bool is_init_rc(struct file *fp)
         return false;
     }
 
-    const char *short_name = fp->f_path.dentry->d_name.name;
-    if (strcmp(short_name, "init.rc")) {
-        // we are only interest `init.rc` file name file
-        return false;
-    }
+    // Bind mounts retain the source dentry name, so match the mounted path.
     char path[256];
     char *dpath = d_path(&fp->f_path, path, sizeof(path));
 

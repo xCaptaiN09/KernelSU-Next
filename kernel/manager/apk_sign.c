@@ -1,4 +1,5 @@
 #include "util.h"
+#include "compat/kernel_compat.h"
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/gfp.h>
@@ -293,9 +294,13 @@ static __always_inline bool check_v2_signature(char *path,
 			pr_debug("error: cannot allocate memory for eocd\n");
 			goto clean;
 		}
+		memset(eocd_buffer, 0, search_size);
 
 		pos = file_size - search_size;
-		kernel_read(fp, eocd_buffer, search_size, &pos);
+		if (kernel_read(fp, eocd_buffer, search_size, &pos) != search_size) {
+			kvfree(eocd_buffer);
+			goto clean;
+		}
 
 		if (search_size >= eocd_min_size) {
 			long j;
@@ -493,6 +498,7 @@ int get_pkg_from_apk_dir_path(char *pkg, const char *path)
 		return -1;
 
 	const char *last_slash = strrchr(path, '/');
+
 	if (!last_slash)
 		return -1;
 
