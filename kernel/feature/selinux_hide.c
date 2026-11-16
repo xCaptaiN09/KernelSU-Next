@@ -12,6 +12,9 @@
 #include <linux/ptrace.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#include <linux/sched/task.h>
+#endif
 #include <linux/proc_fs.h>
 #include <linux/kthread.h>
 
@@ -41,6 +44,11 @@ extern struct selinux_state selinux_state;
 #define KSU_SEL_ACCESS_INO  6
 
 static bool ksu_selinux_hide_enabled __read_mostly = true;
+
+/* Own all hook slots and fake-page publication across every init entry point. */
+static DEFINE_MUTEX(ksu_hide_hook_mutex);
+static bool ksu_hide_stopping;
+static struct task_struct *ksu_hide_init_task;
 
 struct ksu_hide_buf {
     size_t len;
@@ -387,9 +395,15 @@ static void ksu_hook_proc_attr_write(void)
     if (!fops || !fops->write)
         return;
 
-    g_proc_attr_fops = fops;
     orig_proc_pid_attr_write = fops->write;
+    /* Readers must have a valid original before the replacement is visible. */
+    smp_wmb();
     ret = ksu_patch_fops_slot((void **)&fops->write, ksu_proc_pid_attr_write);
+    if (!ret) {
+        g_proc_attr_fops = fops;
+        return;
+    }
+    orig_proc_pid_attr_write = NULL;
     if (ret)
         pr_debug("selinux_hide: proc_attr hook failed: %d\n", ret);
 }
@@ -406,9 +420,15 @@ static void ksu_hook_transaction_write(void)
     if (!fops || !fops->write)
         return;
 
-    g_sel_context_fops = fops;
     orig_sel_write = fops->write;
+    /* Readers must have a valid original before the replacement is visible. */
+    smp_wmb();
     ret = ksu_patch_fops_slot((void **)&fops->write, ksu_sel_write);
+    if (!ret) {
+        g_sel_context_fops = fops;
+        return;
+    }
+    orig_sel_write = NULL;
     if (ret)
         pr_debug("selinux_hide: patch write failed: %d\n", ret);
 }
@@ -484,11 +504,36 @@ static void ksu_hook_status_open(void)
     if (!fops || !fops->open)
         return;
 
-    g_status_fops = fops;
     orig_status_open = fops->open;
+    /* Readers must have a valid original before the replacement is visible. */
+    smp_wmb();
     ret = ksu_patch_fops_slot((void **)&fops->open, ksu_status_open);
+    if (!ret) {
+        g_status_fops = fops;
+        return;
+    }
+    orig_status_open = NULL;
     if (ret)
         pr_debug("selinux_hide: patch status open failed: %d\n", ret);
+}
+
+/* The private installers and page preparer run only under this mutex. */
+static int ksu_selinux_hide_install(void)
+{
+    int ret = -ESHUTDOWN;
+
+    mutex_lock(&ksu_hide_hook_mutex);
+    if (ksu_hide_stopping)
+        goto out;
+
+    ret = ksu_prepare_fake_status_page();
+    if (!ret)
+        ksu_hook_status_open();
+    ksu_hook_transaction_write();
+    ksu_hook_proc_attr_write();
+out:
+    mutex_unlock(&ksu_hide_hook_mutex);
+    return ret;
 }
 
 static int selinux_hide_get(u64 *v)
@@ -529,37 +574,24 @@ static int ksu_selinux_hide_init_thread(void *data)
     ksu_selinux_hide_add_type("msd_app");
     ksu_selinux_hide_add_type("msd_daemon");
 
-try_again:
-    if (ksu_prepare_fake_status_page()) {
-        if (++tries > 10)
-            goto skip_status;
-        msleep(1000);
-        goto try_again;
-    }
-    ksu_hook_status_open();
+    while (!kthread_should_stop()) {
+        int ret = ksu_selinux_hide_install();
 
-skip_status:
-    ksu_hook_transaction_write();
-    ksu_hook_proc_attr_write();
+        if (!ret || ret == -ESHUTDOWN || ++tries > 10)
+            break;
+        msleep(1000);
+    }
     return 0;
 }
 
 void ksu_selinux_hide_handle_second_stage(void)
 {
-    if (!READ_ONCE(ksu_fake_status_page))
-        ksu_prepare_fake_status_page();
-    ksu_hook_status_open();
-    ksu_hook_transaction_write();
-    ksu_hook_proc_attr_write();
+    ksu_selinux_hide_install();
 }
 
 void ksu_selinux_hide_handle_post_fs_data(void)
 {
-    if (!READ_ONCE(ksu_fake_status_page))
-        ksu_prepare_fake_status_page();
-    ksu_hook_status_open();
-    ksu_hook_transaction_write();
-    ksu_hook_proc_attr_write();
+    ksu_selinux_hide_install();
 }
 
 void __init ksu_selinux_hide_init(void)
@@ -567,24 +599,40 @@ void __init ksu_selinux_hide_init(void)
     if (ksu_register_feature_handler(&selinux_hide_handler))
         pr_debug("selinux_hide: register feature failed\n");
 
-    kthread_run(ksu_selinux_hide_init_thread, NULL, "ksu_selinux_hide");
+    ksu_hide_init_task = kthread_create(ksu_selinux_hide_init_thread, NULL, "ksu_selinux_hide");
+    if (IS_ERR(ksu_hide_init_task)) {
+        pr_debug("selinux_hide: init thread failed: %ld\n", PTR_ERR(ksu_hide_init_task));
+        ksu_hide_init_task = NULL;
+        return;
+    }
+    /* The finite init thread may exit before module teardown. */
+    get_task_struct(ksu_hide_init_task);
+    wake_up_process(ksu_hide_init_task);
 }
 
 void __exit ksu_selinux_hide_exit(void)
 {
     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
 
-    mutex_lock(&ksu_hide_list_mutex);
-    ksu_rcu_replace(&ksu_hide_type_list, NULL);
-    ksu_rcu_replace(&ksu_hide_rule_list, NULL);
-    mutex_unlock(&ksu_hide_list_mutex);
-
+    mutex_lock(&ksu_hide_hook_mutex);
+    ksu_hide_stopping = true;
     if (g_sel_context_fops && orig_sel_write)
         ksu_patch_fops_slot((void **)&g_sel_context_fops->write, orig_sel_write);
     if (g_status_fops && orig_status_open)
         ksu_patch_fops_slot((void **)&g_status_fops->open, orig_status_open);
-    if (g_proc_attr_fops && orig_proc_pid_attr_write) {
+    if (g_proc_attr_fops && orig_proc_pid_attr_write)
         ksu_patch_fops_slot((void **)&g_proc_attr_fops->write, orig_proc_pid_attr_write);
-        orig_proc_pid_attr_write = NULL;
+    /* Keep originals valid for callbacks that entered before restoration. */
+    mutex_unlock(&ksu_hide_hook_mutex);
+
+    if (ksu_hide_init_task) {
+        kthread_stop(ksu_hide_init_task);
+        put_task_struct(ksu_hide_init_task);
+        ksu_hide_init_task = NULL;
     }
+
+    mutex_lock(&ksu_hide_list_mutex);
+    ksu_rcu_replace(&ksu_hide_type_list, NULL);
+    ksu_rcu_replace(&ksu_hide_rule_list, NULL);
+    mutex_unlock(&ksu_hide_list_mutex);
 }

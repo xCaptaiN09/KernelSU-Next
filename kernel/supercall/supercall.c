@@ -24,6 +24,7 @@
 #include "util.h"
 #include "klog.h" // IWYU pragma: keep
 #include "manager/manager_identity.h"
+#include "manager/throne_tracker.h"
 #include "compat/kernel_compat.h"
 
 #include "sulog/event.h"
@@ -248,7 +249,7 @@ int vnd_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 			return 0;
 
 		pr_debug("sys_reboot: ksu_set_manager_appid to: %d\n", cmd);
-		ksu_set_manager_appid(cmd);
+		ksu_set_manager_override(cmd);
 
 		if (cmd == ksu_get_manager_appid()) {
 			if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))

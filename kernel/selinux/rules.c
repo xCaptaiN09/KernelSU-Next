@@ -53,17 +53,23 @@ extern int avc_ss_reset(u32 seqno);
 #else
 extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
 #endif
-// reset avc cache table, otherwise the new rules will not take effect if already denied
-static void reset_avc_cache()
+/* Called under the policy mutation lock, or inside stop_machine(). */
+static u32 ksu_next_policy_seqno(void)
 {
-	#if defined(KSU_COMPAT_USE_SELINUX_STATE)
-	u32 seqno = selinux_state.ss ? ++selinux_state.ss->latest_granting : 1;
-	#else
-	/* 4.9: no selinux_state; use a monotonic local seqno for AVC/policyload notifications */
-	static u32 ksu_avc_seqno = 1;
-	u32 seqno = ++ksu_avc_seqno;
-	#endif
+#ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
+    return ++selinux_state.policy->latest_granting;
+#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+    return ++selinux_state.ss->latest_granting;
+#else
+    /* Older trees do not expose the security server's generation counter. */
+    static u32 ksu_avc_seqno = 1;
+    return ++ksu_avc_seqno;
+#endif
+}
 
+/* Notification/status helpers run after the policy spinlock is released. */
+static void reset_avc_cache(u32 seqno)
+{
 #if ((!defined(KSU_COMPAT_USE_SELINUX_STATE)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
     avc_ss_reset(seqno);
@@ -205,6 +211,22 @@ static int apply_kernelsu_rules_fn(void *ptr)
     return 0;
 }
 
+#ifndef SELINUX_POLICY_INSTEAD_SELINUX_SS
+struct ksu_apply_rules_args {
+    struct policydb *db;
+    u32 seqno;
+};
+
+static int apply_kernelsu_rules_stop(void *data)
+{
+    struct ksu_apply_rules_args *ctx = data;
+    int ret = apply_kernelsu_rules_fn(ctx->db);
+
+    ctx->seqno = ksu_next_policy_seqno();
+    return ret;
+}
+#endif
+
 void apply_kernelsu_rules()
 {
 	struct policydb *db;
@@ -229,13 +251,14 @@ void apply_kernelsu_rules()
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 
-	reset_avc_cache();
+	reset_avc_cache(ksu_next_policy_seqno());
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);
 #else
 
 	db = get_policydb();
 	rwlock_t *lock = ksu_get_policy_rwlock();
+	struct ksu_apply_rules_args ctx = { .db = db };
 
 	if (!lock)
 		goto do_stop_machine;
@@ -250,6 +273,7 @@ out_unlock:
 	write_lock(lock);
 
 	apply_kernelsu_rules_fn((void *)db);
+	ctx.seqno = ksu_next_policy_seqno();
 
 	write_unlock(lock);
 	/*
@@ -261,12 +285,15 @@ out_unlock:
 	goto out_reset_avc;
 
 do_stop_machine:
-	stop_machine(apply_kernelsu_rules_fn, (void *)db, NULL);
+	if (stop_machine(apply_kernelsu_rules_stop, &ctx, NULL)) {
+		pr_debug("sepolicy: stop_machine failed to apply base rules\n");
+		return;
+	}
 	ksu_policydb_fixup_len(db, "apply_kernelsu_rules", lock);
 
 out_reset_avc:
 	smp_mb();
-	reset_avc_cache();
+	reset_avc_cache(ctx.seqno);
 #ifdef CONFIG_KSU_SUSFS
     // Allow umount in zygote process without installing zygisk
     //ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
@@ -640,7 +667,7 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 
-	reset_avc_cache();
+	reset_avc_cache(ksu_next_policy_seqno());
 	ret = success_cmd_count;
 	goto out_unlock;
 
@@ -659,6 +686,8 @@ struct handle_sepolicy_args {
 	void *ctx_success_cmd_count;
 	void *ctx_payload;
 	u64 ctx_data_len;
+	u32 seqno;
+	bool generation_updated;
 };
 
 static int handle_sepolicy_fn(void *data)
@@ -716,6 +745,9 @@ static int handle_sepolicy_fn(void *data)
 	}
 
 out:
+	/* Even a partially failed batch changed the live policy. */
+	ctx->seqno = ksu_next_policy_seqno();
+	ctx->generation_updated = true;
 	*(int *)(ctx->ctx_success_cmd_count) = success_cmd_count;
 	return ret;
 }
@@ -781,7 +813,8 @@ out_done:
 	 * rollback, so a partially failed batch still mutated the policydb and
 	 * a stale AVC cache would keep serving the pre-batch decisions.
 	 */
-	reset_avc_cache();
+	if (ctx.generation_updated)
+		reset_avc_cache(ctx.seqno);
 
 	if (ret)
 		goto out_free;

@@ -22,6 +22,7 @@
 uid_t ksu_manager_appid = KSU_INVALID_APPID;
 
 static char manager_pkg[KSU_MAX_PACKAGE_NAME];
+static bool manager_uid_override;
 
 #define SYSTEM_PACKAGES_LIST_PATH "/data/system/packages.list"
 
@@ -47,6 +48,7 @@ static void crown_manager(const char *apk, struct list_head *uid_data)
 	list_for_each_entry (np, list, list) {
 		if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) == 0) {
 			pr_debug("Crowning manager: %s(uid=%d)\n", pkg, np->uid);
+			manager_uid_override = false;
 			strscpy(manager_pkg, pkg, sizeof(manager_pkg));
 			ksu_set_manager_appid(np->uid);
 			break;
@@ -264,6 +266,26 @@ struct ksu_throne_work_data {
 static struct ksu_throne_work_data throne_data;
 static DEFINE_MUTEX(throne_tracker_mutex);
 
+/* The root-only CHANGE_MANAGER_UID command selects an appid directly. */
+void ksu_set_manager_override(uid_t appid)
+{
+	mutex_lock(&throne_tracker_mutex);
+	manager_uid_override = true;
+	manager_pkg[0] = '\0';
+	ksu_set_manager_appid(appid);
+	mutex_unlock(&throne_tracker_mutex);
+}
+
+static bool manager_matches_package(const struct uid_data *entry)
+{
+	if (entry->uid != ksu_get_manager_appid())
+		return false;
+
+	return manager_uid_override ||
+		(manager_pkg[0] &&
+		 !strncmp(entry->package, manager_pkg, KSU_MAX_PACKAGE_NAME));
+}
+
 static bool do_track_throne_core(bool prune_only)
 {
 	if (is_lock_held(SYSTEM_PACKAGES_LIST_PATH)) {
@@ -333,9 +355,7 @@ static bool do_track_throne_core(bool prune_only)
 	// first, check if manager_uid exist!
 	bool manager_exist = false;
 	list_for_each_entry (np, &uid_list, list) {
-		if (manager_pkg[0] &&
-		    !strncmp(np->package, manager_pkg, KSU_MAX_PACKAGE_NAME) &&
-		    np->uid == ksu_get_manager_appid()) {
+		if (manager_matches_package(np)) {
 			manager_exist = true;
 			break;
 		}
@@ -344,6 +364,8 @@ static bool do_track_throne_core(bool prune_only)
 	if (!manager_exist) {
 		if (ksu_is_manager_appid_valid()) {
 			pr_debug("manager is uninstalled, invalidate it!\n");
+			manager_uid_override = false;
+			manager_pkg[0] = '\0';
 			ksu_invalidate_manager_uid();
 			goto prune;
 		}
