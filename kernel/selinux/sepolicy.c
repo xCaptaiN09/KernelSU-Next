@@ -100,11 +100,22 @@ static bool add_typeattribute(struct policydb *db, const char *type,
     ksu_hash_for_each(htab->htable, htab->size, cur)
 #endif
 
+/* Only the target's explicit helpers alter locked mutation allocations. */
+#ifdef SELINUX_POLICY_GFP_HELPERS
+#define ksu_avtab_insert(h, k, d) avtab_insert_nonunique_gfp(h, k, d, KSU_SEPOL_GFP)
+#define ksu_avtab_alloc(h, n) avtab_alloc_gfp(h, n, KSU_SEPOL_GFP)
+#define ksu_hashtab_insert(h, k, d) hashtab_insert_gfp(h, k, d, KSU_SEPOL_GFP)
+#else
+#define ksu_avtab_insert(h, k, d) avtab_insert_nonunique(h, k, d)
+#define ksu_avtab_alloc(h, n) avtab_alloc(h, n)
+#define ksu_hashtab_insert(h, k, d) hashtab_insert(h, k, d)
+#endif
+
 // symtab_search is introduced on 5.9.0:
 // https://elixir.bootlin.com/linux/v5.9-rc1/source/security/selinux/ss/symtab.h
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
 #define symtab_search(s, name) hashtab_search((s)->table, name)
-#define symtab_insert(s, name, datum) hashtab_insert((s)->table, name, datum)
+#define symtab_insert(s, name, datum) ksu_hashtab_insert((s)->table, name, datum)
 #endif
 
 #define avtab_for_each(avtab, cur) ksu_hash_for_each(avtab.htable, avtab.nslot, cur)
@@ -145,7 +156,7 @@ static struct avtab_node *get_avtab_node(struct policydb *db,
             avdatum.u.data = key->specified == AVTAB_AUDITDENY ? ~0U : 0U;
         }
         /* this is used to get the node - insertion is actually unique */
-        node = avtab_insert_nonunique(&db->te_avtab, key, &avdatum);
+        node = ksu_avtab_insert(&db->te_avtab, key, &avdatum);
         if (!node)
             return NULL;
 
@@ -187,7 +198,7 @@ static bool remove_avtab_node(struct policydb *db, struct avtab_node *node)
     struct avtab_node *n;
     struct avtab_node *prev;
 
-    ret = avtab_alloc(&removed, 1);
+    ret = ksu_avtab_alloc(&removed, 1);
     if (ret < 0)
         return false;
 
@@ -737,7 +748,7 @@ out:
             goto free_key_pre57;
         }
         trans->otype = def->value;
-        if (hashtab_insert(db->filename_trans, new_key, trans)) {
+        if (ksu_hashtab_insert(db->filename_trans, new_key, trans)) {
             pr_debug("add_filename_trans: hashtab_insert failed\n");
             goto free_name_pre57;
         }

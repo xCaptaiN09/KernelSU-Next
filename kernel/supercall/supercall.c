@@ -156,7 +156,7 @@ int vnd_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		     unsigned long arg4, unsigned long arg5)
 {
 #ifdef CONFIG_KSU_SUSFS
-	if (option >= CMD_VNDFS_ADD_SUS_PATH && option <= CMD_VNDFS_ADD_SUS_MAP) {
+	if (option >= CMD_VNDFS_ADD_SUS_PATH && option <= CMD_VNDFS_SET_PRIORITY_UID_FILTER) {
 		if (current_uid().val != 0 && !is_manager())
 			return -EPERM;
 		return vnd_handle_vndfs_prctl(option, arg2, arg4);
@@ -182,7 +182,7 @@ int vnd_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 #endif
 
 #ifdef CONFIG_KSU_SUSFS
-	if (arg2 >= CMD_VNDFS_ADD_SUS_PATH && arg2 <= CMD_VNDFS_ADD_SUS_MAP)
+	if (arg2 >= CMD_VNDFS_ADD_SUS_PATH && arg2 <= CMD_VNDFS_SET_PRIORITY_UID_FILTER)
 		return vnd_handle_vndfs_prctl(arg2, arg3, arg5);
 #endif
 
@@ -236,7 +236,7 @@ int vnd_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 		if (current_uid().val != 0 && !is_manager())
 			return 0;
 
-		if (cmd >= CMD_VNDFS_ADD_SUS_PATH && cmd <= CMD_VNDFS_ADD_SUS_MAP)
+		if (cmd >= CMD_VNDFS_ADD_SUS_PATH && cmd <= CMD_VNDFS_SET_PRIORITY_UID_FILTER)
 			vndfs_handle_ioctl(cmd, (unsigned long)*arg);
 
 		return 0;

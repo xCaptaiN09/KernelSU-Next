@@ -1,3 +1,6 @@
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/vndfs.h>
+#endif
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/list.h>
@@ -387,6 +390,16 @@ out:
 	return true; // success
 }
 
+static void vndfs_refresh_package_uids(void)
+{
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	vndfs_parse_sus_path_app_strings();
+#endif
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+	vndfs_parse_priority_app_strings();
+#endif
+}
+
 // kworker
 static void ksu_throne_work_fn(struct work_struct *work)
 {
@@ -402,6 +415,8 @@ static void ksu_throne_work_fn(struct work_struct *work)
 
 	revert_creds(saved_cred);
 	mutex_unlock(&throne_tracker_mutex);
+	if (success)
+		vndfs_refresh_package_uids();
 
 	if (!success && data->retries < 10) {
 		data->retries++;
@@ -425,10 +440,12 @@ void track_throne(bool prune_only)
 		mutex_lock(&throne_tracker_mutex);
 		
 		const struct cred *saved_cred = override_creds(ksu_cred);
-		do_track_throne_core(prune_only);
+		bool success = do_track_throne_core(prune_only);
 		revert_creds(saved_cred);
 		
 		mutex_unlock(&throne_tracker_mutex);
+		if (success)
+			vndfs_refresh_package_uids();
 		throne_tracker_first_run = false;
 		return;
 	}

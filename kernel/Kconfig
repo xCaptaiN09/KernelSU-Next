@@ -101,8 +101,9 @@ config KSU_SUSFS_SUS_PATH
     default y
     help
         - Allow hiding the user-defined path and all its sub-paths from various system calls.
-        - Includes temp fix for the leaks of app path in /sdcard/Android/data directory.
-        - Effective only on zygote spawned user app process.
+        - App UIDs cannot see configured paths by default; the package UID
+          filter allows selected apps to retain access.
+        - Isolated UIDs retain their existing path visibility.
         - Use with cautious as it may cause performance loss and will be vulnerable to side channel attacks,
           just disable this feature if it doesn't work for you or you don't need it at all.
 
@@ -135,7 +136,7 @@ config KSU_SUSFS_SUS_KSTAT
     default y
     help
         - Allow spoofing the kstat of user-defined file/directory.
-        - Effective only on zygote spawned user app process.
+        - Effective on app UIDs.
 
 config KSU_SUSFS_SUS_OVERLAYFS
     bool "Enable to spoof overlayfs kstat/kstatfs automatically"
@@ -196,7 +197,8 @@ config KSU_SUSFS_OPEN_REDIRECT
     default y
     help
         - Allow redirecting a target path to be opened with another user-defined path.
-        - Effective only on processes with uid < 2000.
+        - Each rule selects its UID scope: non-app, non-su, root or
+          unmounted processes.
         - Please be reminded that process with open access to the target and redirected path can be detected.
 
 config KSU_SUSFS_SUS_SU
@@ -206,6 +208,15 @@ config KSU_SUSFS_SUS_SU
     help
         - Allow user to temporarily switch SUS-SU mode at runtime.
         - Only apps with root access granted by KernelSU manager are allowed to use it.
+
+config KSU_SUSFS_PRIORITY_UID_FILTER
+    bool "Enable app UID filtering for priority syscalls"
+    depends on KSU_SUSFS
+    default y
+    help
+        Hide configured package UIDs from getpriority, setpriority and
+        I/O priority queries issued by app processes. Package changes
+        refresh the UID bitmap automatically.
 
 config KSU_SUSFS_SUS_MAP
     bool "Enable to hide some mmapped real file from different proc maps interfaces"

@@ -273,11 +273,13 @@ bool is_init(const struct cred *cred)
 #ifdef CONFIG_KSU_SUSFS
 #define KERNEL_INIT_DOMAIN "u:r:init:s0"
 #define KERNEL_ZYGOTE_DOMAIN "u:r:zygote:s0"
+#define KERNEL_ZYGOTE_NEXT_DOMAIN "u:r:zygote_next:s0"
 #define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
 
 u32 vndfs_ksu_sid = 0;
 u32 vndfs_init_sid = 0;
 u32 vndfs_zygote_sid = 0;
+u32 vndfs_zygote_next_sid = 0;
 u32 vndfs_priv_app_sid = 0;
 
 static inline void vndfs_set_sid(const char *secctx_name, u32 *out_sid)
@@ -336,6 +338,7 @@ u32 vndfs_get_current_sid(void) {
 void vndfs_set_zygote_sid(void)
 {
     vndfs_set_sid(KERNEL_ZYGOTE_DOMAIN, &vndfs_zygote_sid);
+    vndfs_set_sid(KERNEL_ZYGOTE_NEXT_DOMAIN, &vndfs_zygote_next_sid);
 }
 
 bool vndfs_is_current_zygote_domain(void) {

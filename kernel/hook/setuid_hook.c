@@ -45,6 +45,7 @@ static inline bool is_zygote_normal_app_uid(uid_t uid)
 }
 
 extern u32 vndfs_zygote_sid;
+extern u32 vndfs_zygote_next_sid;
 extern struct cred *ksu_cred;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
@@ -85,9 +86,6 @@ static void vnd_handle_extra_vndfs_work(void)
         pr_debug("susfs: Failed adding task_work 'vndfs_handle_setuid_tw', err: %d\n", err);
     }
 }
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-extern void vndfs_try_umount(uid_t uid);
-#endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 static void ksu_install_manager_fd_tw_func(struct callback_head *cb)
@@ -101,9 +99,12 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
     // we rely on the fact that zygote always call setresuid(3) with same uids
     uid_t new_uid = ruid;
     uid_t old_uid = current_uid().val;
+    bool is_zygote_next = vndfs_zygote_next_sid &&
+        vndfs_is_sid_equal(current_cred(), vndfs_zygote_next_sid);
 
     // We only interest in process spwaned by zygote
-    if (!vndfs_is_sid_equal(current_cred(), vndfs_zygote_sid)) {
+    if (old_uid != 0 || (!is_zygote_next &&
+        !vndfs_is_sid_equal(current_cred(), vndfs_zygote_sid))) {
         return 0;
     }
 
@@ -160,6 +161,7 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 		ksu_set_task_tracepoint_flag(current);
 #endif
 	} else {
+        vndfs_set_current_proc_no_su();
 #ifdef KSU_KPROBES_HOOK
 		ksu_clear_task_tracepoint_flag_if_needed(current);
 #endif
@@ -171,19 +173,22 @@ int vnd_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
     return 0;
 
 do_umount:
+    /* zygote_next inherits init's mount namespace: never unmount it. */
+    if (is_zygote_next) {
+        vndfs_set_current_proc_umounted_for_zygote_next();
+        goto mark_umounted;
+    }
     // Handle kernel umount
-#ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
     vnd_handle_umount(old_uid, new_uid);
-#else
-    vndfs_try_umount(new_uid);
-#endif // #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
     //vndfs_run_sus_path_loop(new_uid);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 
+mark_umounted:
     vnd_handle_extra_vndfs_work();
 
+    vndfs_set_current_proc_no_su();
     vndfs_set_current_proc_umounted();
 
     return 0;
